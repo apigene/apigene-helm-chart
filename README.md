@@ -2,6 +2,14 @@
 
 Deploy the full [Apigene](https://apigene.ai) self-hosted platform on Kubernetes. Same stack as [apigene-docker-compose](https://github.com/apigene/apigene-docker-compose) — UI, API, docs, MCP gateway, MongoDB, and Redis in one install.
 
+## One-line install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/apigene/apigene-helm-chart/main/scripts/install.sh | bash
+```
+
+Requires `helm`, `kubectl`, and a configured Kubernetes cluster. Generates an auth secret automatically if `APIGENE_AUTH_SECRET` is unset.
+
 ## Prerequisites
 
 - Kubernetes 1.24+
@@ -9,7 +17,7 @@ Deploy the full [Apigene](https://apigene.ai) self-hosted platform on Kubernetes
 - A cluster with a default StorageClass (for MongoDB)
 - `kubectl` configured for your cluster
 
-## Quick start
+## Quick start (manual)
 
 ```bash
 git clone https://github.com/apigene/apigene-helm-chart.git
@@ -32,6 +40,8 @@ kubectl get svc nginx -n apigene
 kubectl port-forward -n apigene svc/nginx 8080:8080
 open http://localhost:8080
 ```
+
+## Testing
 
 Run smoke tests:
 
@@ -59,12 +69,6 @@ Local end-to-end (creates k3d cluster, deploys, tests, tears down):
 
 ```bash
 TEARDOWN=1 ./scripts/test-local-cluster.sh
-```
-
-## One-line install
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/apigene/apigene-helm-chart/main/scripts/install.sh | bash
 ```
 
 ## Configuration
@@ -163,4 +167,3 @@ kubectl logs -n apigene -l app.kubernetes.io/component=backend --tail=100
 
 - [Docker Compose install](https://github.com/apigene/apigene-docker-compose)
 - [Apigene docs](https://docs.apigene.ai/)
-- [Implementation plan](PLAN.md)
