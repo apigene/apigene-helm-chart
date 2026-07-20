@@ -58,38 +58,11 @@ jobs:
           chmod +x scripts/*.sh tests/*.sh
           SKIP_TESTS=1 TEARDOWN=0 ./scripts/test-local-cluster.sh
 
-      - name: Start port-forward
-        run: |
-          kubectl port-forward -n apigene svc/nginx 8080:8080 >/tmp/apigene-pf.log 2>&1 &
-          echo $! > /tmp/apigene-pf.pid
-          for i in $(seq 1 30); do
-            if curl -fsS http://localhost:8080/nginx-health >/dev/null 2>&1; then
-              echo "nginx reachable via port-forward"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "port-forward log:" && cat /tmp/apigene-pf.log
-          exit 1
-
-      - name: Smoke tests
-        run: ./scripts/smoke.sh
-        env:
-          BASE_URL: http://localhost:8080
-
-      - name: Integration tests
-        run: ./tests/integration.sh
+      - name: Smoke and integration tests
+        run: ./scripts/ci-e2e-tests.sh
         env:
           APIGENE_NAMESPACE: apigene
-          APIGENE_PORT: "8080"
-          BASE_URL: http://localhost:8080
-
-      - name: Stop port-forward
-        if: always()
-        run: |
-          if [[ -f /tmp/apigene-pf.pid ]]; then
-            kill "$(cat /tmp/apigene-pf.pid)" 2>/dev/null || true
-          fi
+          APIGENE_PORT: "18080"
 
       - name: Tear down k3d cluster
         if: always()
