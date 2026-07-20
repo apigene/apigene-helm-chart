@@ -8,7 +8,14 @@ Deploy the full [Apigene](https://apigene.ai) self-hosted platform on Kubernetes
 curl -fsSL https://raw.githubusercontent.com/apigene/apigene-helm-chart/main/scripts/install.sh | bash
 ```
 
-Requires `helm`, `kubectl`, and a configured Kubernetes cluster. Generates an auth secret automatically if `APIGENE_AUTH_SECRET` is unset.
+Requires `git`, `helm`, `kubectl`, and a **reachable** Kubernetes cluster (`kubectl cluster-info` must succeed). Clones to `~/apigene-helm` and runs `helm upgrade --install`.
+
+If you see `cluster unreachable`, your kubectl context may be stale (e.g. after `k3d cluster delete`):
+
+```bash
+k3d cluster create apigene --agents 1 --wait
+curl -fsSL https://raw.githubusercontent.com/apigene/apigene-helm-chart/main/scripts/install.sh | bash
+```
 
 ## Prerequisites
 
