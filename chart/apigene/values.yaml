@@ -1,0 +1,135 @@
+# Default values for the Apigene self-hosted platform.
+# Mirrors apigene-docker-compose/.env.example — keep both in sync.
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Pin all Apigene service images (public ECR). Same as APIGENE_IMAGE_TAG in docker-compose.
+imageTag: "5.2.0"
+
+images:
+  registry: public.ecr.aws/apigene
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+  # Optional per-service tag overrides (APIGENE_*_IMAGE_TAG in docker-compose):
+  # backendTag: ""
+  # copilotTag: ""
+  # mcpGwTag: ""
+  # nginxTag: ""
+
+# Logical tenant and deployment mode (passed to all app containers).
+tenantName: local
+deploymentType: SaaS
+databaseEnv: local
+
+# Browser-facing URL. When empty, defaults to http://localhost:<service.port>.
+# Set for production: https://apigene.example.com
+publicUrl: ""
+
+# CORS origins. When empty, follows publicUrl.
+allowedOrigins: ""
+
+auth:
+  # Self-hosted default (matches docker-compose NEXT_PUBLIC_AUTH_PROVIDER=apigene).
+  provider: apigene
+  # Required for production. Generate: openssl rand -hex 32
+  secretKey: ""
+  # Use an existing Kubernetes secret instead of creating one.
+  existingSecret: ""
+  # Key inside existingSecret for AUTH_APIGENE_SECRET_KEY (default key name shown).
+  existingSecretKey: AUTH_APIGENE_SECRET_KEY
+
+cache:
+  enabled: true
+
+logging:
+  env: local
+
+# Optional LLM provider keys (add after install via --set or values file).
+llm:
+  openaiApiKey: ""
+
+namespace:
+  # Use --create-namespace on helm install (avoids conflict with Helm's namespace flag).
+  create: false
+  name: apigene
+
+# --- Bundled MongoDB (default on) ---
+
+mongo:
+  enabled: true
+  image:
+    repository: mongo
+    tag: "7"
+    pullPolicy: IfNotPresent
+  storage: 10Gi
+  storageClass: ""
+  resources: {}
+
+externalMongo:
+  enabled: false
+  url: ""
+
+# --- Bundled Redis (default on) ---
+
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: 7-alpine
+    pullPolicy: IfNotPresent
+  port: 6379
+  resources: {}
+
+externalRedis:
+  enabled: false
+  host: ""
+  port: 6379
+
+# --- Application services ---
+
+backend:
+  enabled: true
+  replicas: 1
+  resources: {}
+
+backendWorker:
+  enabled: true
+  replicas: 1
+  resources: {}
+
+copilot:
+  enabled: true
+  replicas: 1
+  resources: {}
+
+mcpGw:
+  enabled: true
+  replicas: 1
+  resources: {}
+
+nginx:
+  enabled: true
+  replicas: 1
+  resources: {}
+
+# --- Exposure ---
+
+service:
+  type: LoadBalancer
+  port: 8080
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  host: apigene.example.com
+  tls:
+    enabled: true
+    secretName: ""
+
+# Node scheduling (images are linux/amd64).
+nodeSelector: {}
+tolerations: []
+affinity: {}

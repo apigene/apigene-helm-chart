@@ -1,0 +1,20 @@
+{{- if and .Values.mongo.enabled (not .Values.externalMongo.enabled) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongo-config
+  namespace: {{ include "apigene.namespace" . }}
+  labels:
+    {{- include "apigene.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongo
+data:
+  mongod.conf: |
+    storage:
+      dbPath: /data/db
+    systemLog:
+      destination: file
+      path: /dev/null
+      quiet: true
+    net:
+      bindIpAll: true
+{{- end }}

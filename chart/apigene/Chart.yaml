@@ -1,0 +1,19 @@
+apiVersion: v2
+name: apigene
+description: Customer-facing Helm chart for the Apigene self-hosted platform
+type: application
+version: 0.1.0
+appVersion: "5.2.0"
+home: https://apigene.ai
+sources:
+  - https://github.com/apigene/apigene-helm-chart
+  - https://github.com/apigene/apigene-docker-compose
+keywords:
+  - apigene
+  - mcp
+  - api
+  - self-hosted
+maintainers:
+  - name: Apigene
+    url: https://apigene.ai
+icon: https://www.apigene.ai/favicon.ico

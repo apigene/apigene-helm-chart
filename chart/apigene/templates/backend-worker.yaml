@@ -1,0 +1,41 @@
+{{- if and .Values.backend.enabled .Values.backendWorker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-worker
+  namespace: {{ include "apigene.namespace" . }}
+  labels:
+    {{- include "apigene.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend-worker
+spec:
+  replicas: {{ .Values.backendWorker.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: backend-worker
+      {{- include "apigene.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: backend-worker
+        {{- include "apigene.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- include "apigene.imagePullSecrets" . | nindent 6 }}
+      {{- include "apigene.nodeScheduling" . | nindent 6 }}
+      initContainers:
+        {{- include "apigene.waitForRedisInit" . | nindent 8 }}
+        {{- include "apigene.waitForBackendInit" . | nindent 8 }}
+      containers:
+        - name: backend-worker
+          image: {{ include "apigene.backendImage" . | quote }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          args: ["celery"]
+          envFrom:
+            - secretRef:
+                name: {{ include "apigene.secretName" . }}
+          env:
+            {{- include "apigene.commonEnv" . | nindent 12 }}
+          {{- with .Values.backendWorker.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

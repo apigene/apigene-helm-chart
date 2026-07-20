@@ -1,0 +1,52 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Release: {{ .Release.Name }}
+Namespace: {{ include "apigene.namespace" . }}
+Image tag: {{ include "apigene.imageTag" . }}
+
+Apigene is starting. Pods may take 2–3 minutes to become ready.
+
+1. Watch rollout status:
+
+  kubectl get pods -n {{ include "apigene.namespace" . }} -w
+
+2. Access the platform:
+
+{{- if .Values.ingress.enabled }}
+
+  https://{{ .Values.ingress.host }}
+
+  Ensure DNS points to your ingress controller and TLS is configured.
+
+{{- else if eq .Values.service.type "LoadBalancer" }}
+
+  export SERVICE_IP=$(kubectl get svc nginx -n {{ include "apigene.namespace" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+  export SERVICE_HOST=$(kubectl get svc nginx -n {{ include "apigene.namespace" . }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+  if [ -n "$SERVICE_IP" ]; then
+    echo "Open http://${SERVICE_IP}:{{ .Values.service.port }}"
+  elif [ -n "$SERVICE_HOST" ]; then
+    echo "Open http://${SERVICE_HOST}:{{ .Values.service.port }}"
+  else
+    echo "LoadBalancer IP pending — run: kubectl get svc nginx -n {{ include "apigene.namespace" . }}"
+  fi
+
+{{- else }}
+
+  kubectl port-forward -n {{ include "apigene.namespace" . }} svc/nginx {{ .Values.service.port }}:{{ .Values.service.port }}
+  echo "Open {{ include "apigene.publicUrl" . }}"
+
+{{- end }}
+
+3. Run tests (with port-forward or once the URL is reachable):
+
+  ./scripts/run-tests.sh --port-forward
+
+  Or smoke only: BASE_URL={{ include "apigene.publicUrl" . }} ./scripts/smoke.sh
+
+4. Production reminders:
+
+  - Set publicUrl to the browser-facing URL (must match what users open).
+  - auth.secretKey is required; generate with: openssl rand -hex 32
+  - MCP clients: {{ include "apigene.publicUrl" . }}/agent/<agent-name>/mcp
+
+Docs: https://docs.apigene.ai/

@@ -1,0 +1,109 @@
+openapi: 3.1.0
+info:
+  title: ifconfig
+  version: "1.0.0"
+  description: |
+    Returns information about the caller's public IP address.
+    JSON is returned when the request includes the header: Accept: application/json.
+servers:
+  - url: https://ifconfig.co
+paths:
+  /:
+    get:
+      operationId: getMyIpInfo
+      summary: Get caller IP info
+      description: Returns public IP address and related metadata for the caller.
+      parameters:
+        - in: header
+          name: Accept
+          required: false
+          schema:
+            type: string
+          description: Set to application/json to request JSON output.
+          example: application/json
+      responses:
+        "200":
+          description: IP information for the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IfconfigResponse"
+              examples:
+                example1:
+                  summary: Example response
+                  value:
+                    ip: "2a06:c701:4b0a:1f00:385f:8b27:362b:cca9"
+                    ip_decimal: 55862765906080576216629896400847228073
+                    country: "Israel"
+                    country_iso: "IL"
+                    country_eu: false
+                    region_name: "Tel Aviv"
+                    region_code: "TA"
+                    city: "Ramat HaSharon"
+                    latitude: 32.1471
+                    longitude: 34.8503
+                    time_zone: "Asia/Jerusalem"
+                    asn: "AS6810"
+                    asn_org: "Bezeq- THE ISRAEL TELECOMMUNICATION CORP. LTD."
+                    user_agent:
+                      product: "curl"
+                      version: "8.4.0"
+                      raw_value: "curl/8.4.0"
+        "429":
+          description: Too Many Requests (rate limited)
+        "5XX":
+          description: Server error
+components:
+  schemas:
+    IfconfigResponse:
+      type: object
+      additionalProperties: true
+      required:
+        - ip
+      properties:
+        ip:
+          type: string
+          description: Public IP address (IPv4 or IPv6).
+          examples:
+            - "203.0.113.10"
+            - "2a06:c701:4b0a:1f00:385f:8b27:362b:cca9"
+        ip_decimal:
+          oneOf:
+            - type: integer
+            - type: string
+          description: IP represented as a decimal integer (commonly present for IPv6).
+        country:
+          type: string
+        country_iso:
+          type: string
+          description: ISO 3166-1 alpha-2 country code.
+        country_eu:
+          type: boolean
+        region_name:
+          type: string
+        region_code:
+          type: string
+        city:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        time_zone:
+          type: string
+        asn:
+          type: string
+          description: Autonomous System Number, typically prefixed with AS.
+        asn_org:
+          type: string
+          description: ASN organization name.
+        user_agent:
+          type: object
+          additionalProperties: true
+          properties:
+            product:
+              type: string
+            version:
+              type: string
+            raw_value:
+              type: string

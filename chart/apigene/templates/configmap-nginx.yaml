@@ -1,0 +1,140 @@
+{{- if .Values.nginx.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: {{ include "apigene.namespace" . }}
+  labels:
+    {{- include "apigene.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nginx
+data:
+  nginx.conf: |
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        access_log /dev/stdout;
+        error_log /dev/stderr;
+
+        server {
+            listen 8080;
+            client_max_body_size 15M;
+
+            location @json_502 {
+                default_type application/json;
+                return 502 '{"error":"Bad Gateway","message":"NGINX: upstream unavailable","status_code":502}';
+            }
+            location @json_504 {
+                default_type application/json;
+                return 504 '{"error":"Gateway Timeout","message":"NGINX: upstream timeout","status_code":504}';
+            }
+
+            location = /nginx-health {
+                access_log off;
+                default_type application/json;
+                return 200 '{"status":"ok","service":"nginx"}';
+            }
+
+            location = /api/health {
+                proxy_pass http://backend:8000;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_connect_timeout 2s;
+                proxy_read_timeout 2s;
+            }
+
+            location ~ ^/api/mcp/(.*)$ {
+                proxy_pass http://backend:8000;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_connect_timeout 60s;
+                proxy_send_timeout 300s;
+                proxy_read_timeout 300s;
+                proxy_intercept_errors on;
+                error_page 502 = @json_502;
+                error_page 504 = @json_504;
+            }
+
+            location ~ ^/api/(.*)$ {
+                proxy_pass http://backend:8000;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_intercept_errors on;
+                error_page 502 = @json_502;
+                error_page 504 = @json_504;
+            }
+
+            location ~ ^/(docs|openapi.json|redoc) {
+                proxy_pass http://backend:8000;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            {{- if .Values.mcpGw.enabled }}
+
+            location ~ ^/([^/]+)/([^/]+)/mcp/?$ {
+                proxy_pass http://mcp-gw:8001;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_buffering off;
+                proxy_read_timeout 3600;
+                proxy_send_timeout 3600;
+            }
+
+            location /mcp_gw_oauth_callback {
+                proxy_pass http://mcp-gw:8001;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            location ~ ^/\.well-known/(.*)$ {
+                proxy_pass http://mcp-gw:8001;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+            {{- end }}
+
+            {{- if .Values.copilot.enabled }}
+
+            location / {
+                proxy_pass http://copilot:3000;
+                proxy_http_version 1.1;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Forwarded-Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header Connection "";
+            }
+            {{- else }}
+
+            location = / {
+                default_type application/json;
+                return 200 '{"status":"ok","message":"Apigene API — enable copilot to serve UI on /"}';
+            }
+            {{- end }}
+        }
+    }
+{{- end }}

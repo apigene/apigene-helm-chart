@@ -1,0 +1,15 @@
+.DS_Store
+*.swp
+*.swo
+.env
+.env.*
+!.env.example
+
+# Helm
+*.tgz
+chart/apigene/charts/
+chart/apigene/Chart.lock
+
+# IDE
+.idea/
+.vscode/
