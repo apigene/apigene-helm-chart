@@ -31,7 +31,6 @@ if ! k3d cluster list 2>/dev/null | grep -q "^${CLUSTER_NAME} "; then
   echo "Creating k3d cluster ${CLUSTER_NAME}..."
   k3d cluster create "${CLUSTER_NAME}" \
     --agents 1 \
-    --port "${PORT}:80@loadbalancer" \
     --wait
 else
   echo "Using existing k3d cluster ${CLUSTER_NAME}"
@@ -39,11 +38,30 @@ else
 fi
 
 echo "Deploying Helm chart..."
+echo "  (This step is quiet by default — pulling images + waiting for pods can take 5–15 min on first run.)"
+
+watch_progress() {
+  local ns="$1"
+  while true; do
+    sleep 30
+    echo ""
+    echo "--- $(date -u +%H:%M:%S) deploy progress ---"
+    kubectl get pods -n "${ns}" --no-headers 2>/dev/null || true
+    echo "-----------------------------------"
+  done
+}
+
+watch_progress "${NAMESPACE}" &
+WATCH_PID=$!
+
 helm upgrade --install apigene "${ROOT}/chart/apigene" \
   --namespace "${NAMESPACE}" \
   --create-namespace \
   --set auth.secretKey="${AUTH_SECRET}" \
   --wait --timeout 20m
+
+kill "${WATCH_PID}" 2>/dev/null || true
+wait "${WATCH_PID}" 2>/dev/null || true
 
 echo "Waiting for pods..."
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=apigene \

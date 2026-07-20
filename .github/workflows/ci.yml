@@ -62,8 +62,15 @@ jobs:
         run: |
           kubectl port-forward -n apigene svc/nginx 8080:8080 >/tmp/apigene-pf.log 2>&1 &
           echo $! > /tmp/apigene-pf.pid
-          sleep 3
-          curl -fsS http://localhost:8080/nginx-health
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/nginx-health >/dev/null 2>&1; then
+              echo "nginx reachable via port-forward"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "port-forward log:" && cat /tmp/apigene-pf.log
+          exit 1
 
       - name: Smoke tests
         run: ./scripts/smoke.sh
