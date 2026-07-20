@@ -29,6 +29,27 @@ err()   { echo "  ✘  $1" >&2; }
 step()  { echo "  →  $1"; }
 section() { echo ""; echo "━━ $1 ━━"; }
 
+# Resolve scripts/lib.sh: local checkout first, then ~/apigene-helm clone (curl|bash).
+source_install_lib() {
+  local lib=""
+  if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ -f "${script_dir}/lib.sh" ]]; then
+      lib="${script_dir}/lib.sh"
+    fi
+  fi
+  if [[ -z "${lib}" && -f "${APIGENE_INSTALL_DIR}/scripts/lib.sh" ]]; then
+    lib="${APIGENE_INSTALL_DIR}/scripts/lib.sh"
+  fi
+  if [[ -z "${lib}" ]]; then
+    err "scripts/lib.sh not found (run from repo or update ${APIGENE_INSTALL_DIR})"
+    exit 1
+  fi
+  # shellcheck source=/dev/null
+  source "${lib}"
+}
+
 require_command() {
   local name="$1" hint="$2"
   if command -v "$name" >/dev/null 2>&1; then
@@ -115,6 +136,15 @@ run_helm_install() {
   fi
 
   step "Installing release ${APIGENE_RELEASE_NAME} into namespace ${APIGENE_NAMESPACE}..."
+  info "Pulling images and waiting for pods can take 5–15 min on first run."
+
+  source_install_lib
+
+  watch_deploy_progress "${APIGENE_NAMESPACE}" &
+  local watch_pid=$!
+  # shellcheck disable=SC2064
+  trap "stop_deploy_progress ${watch_pid}" RETURN
+
   # shellcheck disable=SC2086
   helm upgrade --install "${APIGENE_RELEASE_NAME}" "${chart_path}" \
     --namespace "${APIGENE_NAMESPACE}" \
@@ -122,6 +152,9 @@ run_helm_install() {
     --set auth.secretKey="${auth_secret}" \
     --wait --timeout 20m \
     ${EXTRA_ARGS}
+
+  stop_deploy_progress "${watch_pid}"
+  trap - RETURN
 
   ok "Release ${APIGENE_RELEASE_NAME} installed"
 }
