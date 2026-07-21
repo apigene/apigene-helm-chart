@@ -1,0 +1,17 @@
+# Customer example for an existing Kubernetes cluster (on-prem/BYO cluster).
+
+tenant_name  = "acme"
+fqdn         = "apigene.example.com"
+image_tag    = "5.2.0"
+
+# Set > 0 only if you use port-forward/local access.
+public_url_port = 0
+
+# Production defaults:
+enable_tls         = true
+use_staging_issuer = false
+aws_nlb            = false
+install_storage_class = false
+
+# Enable if this cluster does not already have ingress-nginx/cert-manager:
+# install_addons = true

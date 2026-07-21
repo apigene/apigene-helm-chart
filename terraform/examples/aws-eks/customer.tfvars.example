@@ -1,0 +1,16 @@
+# Customer example — copy to customer.tfvars and customize.
+# Result URL: https://{tenant_name}.{root_domain}
+
+tenant_name       = "acme"
+aws_region        = "us-east-2"
+root_domain       = "example.com"
+hosted_zone_id    = "Z1234567890EXAMPLE"
+letsencrypt_email = "platform@example.com"
+image_tag         = "5.2.0"
+
+# Start with staging while validating DNS/ingress, then switch to false.
+use_staging_issuer = true
+
+# Optional overrides:
+# cluster_name      = "apigene-acme"
+# node_desired_size = 2

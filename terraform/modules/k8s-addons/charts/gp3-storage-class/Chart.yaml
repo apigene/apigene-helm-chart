@@ -1,0 +1,5 @@
+apiVersion: v2
+name: gp3-storage-class
+description: Default gp3 StorageClass for AWS EBS CSI
+type: application
+version: 0.1.0

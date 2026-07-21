@@ -1,0 +1,7 @@
+# Copy to backend.conf and fill in your S3 backend details.
+#
+# bucket         = "your-terraform-state-bucket"
+# key            = "apigene-k8s/terraform.tfstate"
+# region         = "eu-central-1"
+# encrypt        = true
+# dynamodb_table = "terraform_state_lock"

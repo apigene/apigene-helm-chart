@@ -1,4 +1,4 @@
-.PHONY: lint template test smoke integration test-local-cluster ci ci-chart ci-e2e
+.PHONY: lint template test smoke integration test-local-cluster ci ci-chart ci-e2e terraform-validate terraform-fmt
 
 NAMESPACE ?= apigene
 AUTH_SECRET ?= testsecret12345678901234567890123456789012
@@ -33,3 +33,14 @@ ci-chart:
 
 ci-e2e:
 	./scripts/ci.sh e2e
+
+terraform-fmt:
+	terraform fmt -recursive terraform/
+
+terraform-validate:
+	terraform fmt -check -recursive terraform/
+	cd terraform/examples/existing-cluster && terraform init -backend=false -input=false && terraform validate
+	cd terraform/examples/aws-eks && terraform init -backend=false -input=false && terraform validate
+
+test-terraform-local:
+	./scripts/test-terraform-local.sh

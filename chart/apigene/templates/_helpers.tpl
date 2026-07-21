@@ -87,6 +87,24 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- end }}
 
+{{- define "apigene.publicUrlHost" -}}
+{{- $parsed := urlParse (include "apigene.publicUrl" .) -}}
+{{- regexReplaceAll ":[0-9]+$" $parsed.host "" -}}
+{{- end }}
+
+{{- define "apigene.copilotHostAliases" -}}
+{{- if and .Values.copilot.internalPublicUrlHostAlias .Values.nginx.enabled -}}
+{{- $nginx := lookup "v1" "Service" (include "apigene.namespace" .) "nginx" -}}
+{{- $host := include "apigene.publicUrlHost" . -}}
+{{- if and $nginx $host -}}
+hostAliases:
+  - ip: {{ $nginx.spec.clusterIP | quote }}
+    hostnames:
+      - {{ $host | quote }}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
 {{- define "apigene.mongoUrl" -}}
 {{- if .Values.externalMongo.enabled -}}
 {{- required "externalMongo.url is required when externalMongo.enabled=true" .Values.externalMongo.url -}}

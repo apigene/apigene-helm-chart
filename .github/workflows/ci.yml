@@ -67,3 +67,18 @@ jobs:
       - name: Tear down k3d cluster
         if: always()
         run: k3d cluster delete apigene-helm-test || true
+
+  terraform:
+    name: Terraform validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Validate Terraform
+        run: make terraform-validate

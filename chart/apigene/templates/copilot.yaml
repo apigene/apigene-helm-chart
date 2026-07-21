@@ -38,6 +38,7 @@ spec:
     spec:
       {{- include "apigene.imagePullSecrets" . | nindent 6 }}
       {{- include "apigene.nodeScheduling" . | nindent 6 }}
+      {{- include "apigene.copilotHostAliases" . | nindent 6 }}
       initContainers:
         {{- include "apigene.waitForBackendInit" . | nindent 8 }}
       containers:

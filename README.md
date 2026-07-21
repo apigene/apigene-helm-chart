@@ -111,7 +111,7 @@ ingress:
     enabled: true
 ```
 
-Production example:
+Production example (Helm only):
 
 ```bash
 helm install apigene ./chart/apigene \
@@ -119,6 +119,15 @@ helm install apigene ./chart/apigene \
   --set publicUrl=https://apigene.example.com \
   --set auth.secretKey="$APIGENE_AUTH_SECRET" \
   --set ingress.host=apigene.example.com
+```
+
+For AWS EKS or on-prem cluster deployment via Terraform, see [`terraform/README.md`](terraform/README.md):
+
+```bash
+cd terraform/examples/aws-eks
+terraform init -backend-config=backend.conf
+cp customer.tfvars.example customer.tfvars
+terraform apply -var-file=customer.tfvars
 ```
 
 ## Upgrade

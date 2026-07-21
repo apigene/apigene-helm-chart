@@ -1,0 +1,16 @@
+# Legacy sample. Prefer customer.tfvars.example for customer-facing setup.
+# Copy to your tenant tfvars file and customize.
+
+tenant_name      = "dev-k8s"
+aws_region       = "eu-central-1"
+root_domain      = "apigene.ai"
+hosted_zone_id   = "Z006941918Y30HJI2JK4U"
+letsencrypt_email = "you@apigene.ai"
+image_tag        = "5.2.0"
+
+# Use staging issuer while testing to avoid Let's Encrypt rate limits:
+# use_staging_issuer = true
+
+# Optional overrides:
+# cluster_name = "apigene-dev-k8s"
+# node_desired_size = 2

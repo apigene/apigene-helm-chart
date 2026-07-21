@@ -102,6 +102,10 @@ copilot:
   enabled: true
   replicas: 1
   resources: {}
+  # Map publicUrl hostname to the in-cluster nginx Service IP so copilot server-side
+  # auth/API calls work (docker-compose uses network_mode: service:nginx for this).
+  # Enable for local k3d when publicUrl hostname is not cluster DNS (e.g. apigene.localtest).
+  internalPublicUrlHostAlias: false
 
 mcpGw:
   enabled: true
