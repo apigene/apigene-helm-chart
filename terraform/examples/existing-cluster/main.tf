@@ -32,13 +32,13 @@ locals {
 module "apigene" {
   source = "../../modules/apigene-helm"
 
-  chart_path                           = local.chart_path
-  tenant_name                          = var.tenant_name
-  fqdn                                 = var.fqdn
-  image_tag                            = var.image_tag
-  auth_secret_key                      = var.auth_secret_key
-  cluster_issuer_name                  = local.cluster_issuer_name
-  enable_tls                           = var.enable_tls
-  public_url_port                      = var.public_url_port
+  chart_path                             = local.chart_path
+  tenant_name                            = var.tenant_name
+  fqdn                                   = var.fqdn
+  image_tag                              = var.image_tag
+  auth_secret_key                        = var.auth_secret_key
+  cluster_issuer_name                    = local.cluster_issuer_name
+  enable_tls                             = var.enable_tls
+  public_url_port                        = var.public_url_port
   copilot_internal_public_url_host_alias = var.copilot_internal_public_url_host_alias
 }
