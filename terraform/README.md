@@ -81,15 +81,34 @@ terraform init -backend-config=backend.conf
 
 # Or without remote state (local state file)
 terraform init
+```
 
-# Preview what will be created
-terraform plan -var-file=customer.tfvars
+**Greenfield (new cluster) — two-phase apply**
 
-# Deploy (~20-30 minutes for first run)
+Kubernetes/Helm providers need a live EKS API. Create the network and cluster first, then install addons and Apigene:
+
+```bash
+# Phase 1: VPC + EKS control plane + node group (~10–15 min)
+terraform apply -target=module.vpc -target=module.eks -var-file=customer.tfvars
+
+# Confirm the cluster is ACTIVE
+aws eks describe-cluster \
+  --name "$(terraform output -raw cluster_name)" \
+  --region "$(grep aws_region customer.tfvars | awk -F'"' '{print $2}')" \
+  --query 'cluster.status'
+
+# Phase 2: addons, DNS, Apigene Helm (~10–15 min)
 terraform apply -var-file=customer.tfvars
 ```
 
-The apply creates, in order:
+**Day-2 / existing cluster** (cluster already in state):
+
+```bash
+terraform plan -var-file=customer.tfvars
+terraform apply -var-file=customer.tfvars
+```
+
+What gets created:
 1. **VPC** — public/private subnets, NAT gateway
 2. **EKS cluster** — control plane + managed node group (~10-15 min)
 3. **EKS addons** — vpc-cni, coredns, kube-proxy, EBS CSI driver
@@ -197,7 +216,9 @@ open http://localhost:8080
 | `auth_secret_key` | Auth secret (auto-generated if empty) | `""` | No |
 | `cluster_name` | Override EKS cluster name | `apigene-{tenant_name}` | No |
 | `node_instance_types` | EC2 instance types for nodes | `["t3.large"]` | No |
-| `node_desired_size` | Number of worker nodes | `2` | No |
+| `node_desired_size` | Desired worker nodes | `2` | No |
+| `node_min_size` | Minimum worker nodes | `2` | No |
+| `node_max_size` | Maximum worker nodes | `4` | No |
 | `vpc_cidr_block` | VPC CIDR block | `10.0.0.0/16` | No |
 
 Resulting URL: `https://{tenant_name}.{root_domain}`
@@ -239,7 +260,8 @@ kubectl delete pvc -l app.kubernetes.io/component=mongo -n apigene
 
 | Problem | Fix |
 |---------|-----|
-| `terraform plan` fails with "no client config" | Ensure `depends_on = [module.eks]` is set on `k8s_addons` |
+| `reading EKS Cluster (...): couldn't find resource` | Greenfield run: apply VPC+EKS first with `-target=module.vpc -target=module.eks`, then full apply. Providers use `module.eks` outputs (no cluster data source lookup). |
+| `terraform plan` fails with "no client config" | Ensure `depends_on = [module.eks]` is set on `k8s_addons`; complete phase 1 so the cluster exists |
 | Helm release `Unauthorized` | EKS token expired during long apply — re-run `terraform apply` |
 | Cert warning in browser | Still using staging issuer — set `use_staging_issuer = false` and re-apply |
 | Signup returns "Failed to create account" | Staging cert issue — copilot can't verify TLS to itself; switch to production issuer |

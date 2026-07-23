@@ -68,6 +68,18 @@ variable "node_desired_size" {
   default     = 2
 }
 
+variable "node_min_size" {
+  description = "Minimum EKS node count."
+  type        = number
+  default     = 2
+}
+
+variable "node_max_size" {
+  description = "Maximum EKS node count."
+  type        = number
+  default     = 4
+}
+
 variable "tags" {
   description = "Additional tags for AWS resources."
   type        = map(string)

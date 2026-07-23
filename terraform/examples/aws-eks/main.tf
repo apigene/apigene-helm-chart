@@ -33,17 +33,18 @@ module "eks" {
   node_subnet_ids       = module.vpc.private_subnet_ids
   node_instance_types   = var.node_instance_types
   node_desired_size     = var.node_desired_size
+  node_min_size         = var.node_min_size
+  node_max_size         = var.node_max_size
   enable_ebs_csi_driver = true
   tags                  = local.common_tags
 }
 
-data "aws_eks_cluster" "this" {
-  name = module.eks.cluster_name
-}
-
+# Use module outputs (not a data source) so greenfield applies do not require
+# the cluster to already exist. First apply should still create VPC+EKS first
+# (see terraform/README.md) before kubernetes/helm providers can talk to the API.
 provider "kubernetes" {
-  host                   = data.aws_eks_cluster.this.endpoint
-  cluster_ca_certificate = base64decode(data.aws_eks_cluster.this.certificate_authority[0].data)
+  host                   = module.eks.cluster_endpoint
+  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
 
   exec {
     api_version = "client.authentication.k8s.io/v1beta1"
@@ -61,8 +62,8 @@ provider "kubernetes" {
 
 provider "helm" {
   kubernetes {
-    host                   = data.aws_eks_cluster.this.endpoint
-    cluster_ca_certificate = base64decode(data.aws_eks_cluster.this.certificate_authority[0].data)
+    host                   = module.eks.cluster_endpoint
+    cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
 
     exec {
       api_version = "client.authentication.k8s.io/v1beta1"
