@@ -6,7 +6,7 @@ aws_region       = "eu-central-1"
 root_domain      = "apigene.ai"
 hosted_zone_id   = "Z006941918Y30HJI2JK4U"
 letsencrypt_email = "you@apigene.ai"
-image_tag        = "5.2.0"
+image_tag        = "5.4.0"
 
 # Use staging issuer while testing to avoid Let's Encrypt rate limits:
 # use_staging_issuer = true

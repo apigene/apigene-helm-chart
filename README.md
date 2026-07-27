@@ -83,8 +83,8 @@ TEARDOWN=1 ./scripts/test-local-cluster.sh
 See [`chart/apigene/values.yaml`](chart/apigene/values.yaml) for all options. Common settings:
 
 ```yaml
-# Pin release (matches docker-compose APIGENE_IMAGE_TAG)
-imageTag: "5.2.0"
+# Pin release
+imageTag: "5.4.0"
 
 # Public URL users open in the browser
 publicUrl: "https://apigene.example.com"
