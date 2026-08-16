@@ -82,3 +82,98 @@ jobs:
 
       - name: Validate Terraform
         run: make terraform-validate
+
+  # Slack status for chart / e2e / terraform (success or failure).
+  notify:
+    name: Notify Slack
+    needs: [chart, e2e, terraform]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build Slack payload
+        env:
+          CHART_RESULT: ${{ needs.chart.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+          TF_RESULT: ${{ needs.terraform.result }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RAW: ${{ github.event.head_commit.message || github.event.pull_request.title }}
+        run: |
+          SUBJECT=$(printf '%s' "$RAW" | head -n1 | tr -d '\r' | tr -d '[:cntrl:]')
+          if [ -z "$SUBJECT" ]; then
+            SUBJECT="No commit message available."
+          fi
+          FAILED=""
+          for pair in "chart:${CHART_RESULT}" "e2e:${E2E_RESULT}" "terraform:${TF_RESULT}"; do
+            name="${pair%%:*}"
+            result="${pair##*:}"
+            if [ "$result" = "failure" ]; then
+              if [ -n "$FAILED" ]; then
+                FAILED="${FAILED}, ${name}"
+              else
+                FAILED="$name"
+              fi
+            fi
+          done
+          if [ -n "$FAILED" ]; then
+            TITLE="helm-chart CI failed"
+            HEX="#E01E5A"
+            DETAIL="failed: \`${FAILED}\` · chart=\`${CHART_RESULT}\` · e2e=\`${E2E_RESULT}\` · terraform=\`${TF_RESULT}\`"
+          elif [ "$CHART_RESULT" = "success" ] && [ "$E2E_RESULT" = "success" ] && [ "$TF_RESULT" = "success" ]; then
+            TITLE="helm-chart CI succeeded"
+            HEX="#2EB67D"
+            DETAIL="chart=\`${CHART_RESULT}\` · e2e=\`${E2E_RESULT}\` · terraform=\`${TF_RESULT}\`"
+          else
+            TITLE="helm-chart CI finished"
+            HEX="#ECB22E"
+            DETAIL="chart=\`${CHART_RESULT}\` · e2e=\`${E2E_RESULT}\` · terraform=\`${TF_RESULT}\`"
+          fi
+          jq -n \
+            --arg title "$TITLE" \
+            --arg hex "$HEX" \
+            --arg detail "$DETAIL" \
+            --arg ref "$REF_NAME" \
+            --arg sha "${SHA:0:7}" \
+            --arg actor "$ACTOR" \
+            --arg msg "$SUBJECT" \
+            --arg url "$RUN_URL" \
+            '{
+              text: ($title + " — " + $ref),
+              attachments: [
+                {
+                  color: $hex,
+                  blocks: [
+                    {
+                      type: "section",
+                      text: {
+                        type: "mrkdwn",
+                        text: ("*" + $title + "* · `" + $ref + "` · `" + $sha + "`\n" + $detail + " · `" + $actor + "`\n" + $msg)
+                      }
+                    },
+                    {
+                      type: "actions",
+                      elements: [
+                        {
+                          type: "button",
+                          text: {
+                            type: "plain_text",
+                            text: "View workflow",
+                            emoji: false
+                          },
+                          url: $url
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }' > "$RUNNER_TEMP/slack-payload.json"
+
+      - name: Send Slack Notification
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_DEPLOYMENT }}
+          webhook-type: incoming-webhook
+          payload-file-path: ${{ runner.temp }}/slack-payload.json
