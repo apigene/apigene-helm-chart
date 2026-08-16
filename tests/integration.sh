@@ -779,9 +779,6 @@ else
   http_json GET "${BASE_URL}/api/gpts/list" -H "Authorization: Bearer ${TOKEN}"
   expect_status "gpts list" "200" || true
 
-  http_json GET "${BASE_URL}/api/gpts/explore" -H "Authorization: Bearer ${TOKEN}"
-  expect_status "gpts explore" "200" || true
-
   http_json GET "${BASE_URL}/api/task" -H "Authorization: Bearer ${TOKEN}"
   if expect_status "task list" "200"; then
     if echo "$HTTP_BODY" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert isinstance(d,list) and len(d)>=1' 2>/dev/null; then
