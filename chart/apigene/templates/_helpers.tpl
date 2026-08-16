@@ -148,6 +148,8 @@ redis
   value: {{ .Values.tenantName | quote }}
 - name: DEPLOYMENT_TYPE
   value: {{ .Values.deploymentType | quote }}
+- name: LICENSE_ALGORITHM
+  value: {{ .Values.license.algorithm | default "RS256" | quote }}
 - name: DATABASE_ENV
   value: {{ .Values.databaseEnv | quote }}
 - name: UVICORN_WORKERS

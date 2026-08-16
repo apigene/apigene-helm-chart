@@ -19,8 +19,17 @@ images:
 
 # Logical tenant and deployment mode (passed to all app containers).
 tenantName: local
+# SaaS (default) or OnPrem. OnPrem enables 30-day trial + paste-license upgrade.
 deploymentType: SaaS
 databaseEnv: local
+
+# OnPrem only (when deploymentType=OnPrem). SaaS ignores these.
+# OnPrem boots in trial without a public key; set publicKey to accept pasted licenses.
+# Prefer base64:… for PEM content. If using auth.existingSecret, put LICENSE_PUBLIC_KEY
+# in that secret yourself (chart-managed secret is skipped).
+license:
+  publicKey: ""
+  algorithm: RS256
 
 # Browser-facing URL. When empty, defaults to http://localhost:<service.port>.
 # Set for production: https://apigene.example.com

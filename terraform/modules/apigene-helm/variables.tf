@@ -63,9 +63,22 @@ variable "mongo_storage" {
 }
 
 variable "deployment_type" {
-  description = "Apigene deployment type label."
+  description = "Apigene deployment type (SaaS or OnPrem)."
   type        = string
   default     = "SaaS"
+}
+
+variable "license_public_key" {
+  description = "OnPrem only — PEM or base64:… public key to verify pasted licenses. Empty = trial mode."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "license_algorithm" {
+  description = "OnPrem license JWT algorithm (default RS256)."
+  type        = string
+  default     = "RS256"
 }
 
 variable "database_env" {

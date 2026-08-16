@@ -94,6 +94,12 @@ auth:
   provider: apigene
   secretKey: ""   # openssl rand -hex 32
 
+# Optional OnPrem licensing (default SaaS). Trial works without publicKey.
+# deploymentType: OnPrem
+# license:
+#   publicKey: "base64:…"   # required only to accept pasted licenses
+#   algorithm: RS256
+
 # MongoDB PVC
 mongo:
   storage: 20Gi

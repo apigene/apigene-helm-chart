@@ -214,6 +214,9 @@ open http://localhost:8080
 | `image_tag` | Apigene release tag | `5.4.0` | No |
 | `use_staging_issuer` | Use LE staging (for testing) | `false` | No |
 | `auth_secret_key` | Auth secret (auto-generated if empty) | `""` | No |
+| `deployment_type` | `SaaS` or `OnPrem` | `SaaS` | No |
+| `license_public_key` | OnPrem license verify key (PEM / `base64:…`) | `""` | No |
+| `license_algorithm` | License JWT algorithm | `RS256` | No |
 | `cluster_name` | Override EKS cluster name | `apigene-{tenant_name}` | No |
 | `node_instance_types` | EC2 instance types for nodes | `["t3.large"]` | No |
 | `node_desired_size` | Desired worker nodes | `2` | No |

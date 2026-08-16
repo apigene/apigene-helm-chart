@@ -47,6 +47,7 @@ Apigene is starting. Pods may take 2–3 minutes to become ready.
 
   - Set publicUrl to the browser-facing URL (must match what users open).
   - auth.secretKey is required; generate with: openssl rand -hex 32
+  - OnPrem: set deploymentType=OnPrem; set license.publicKey to accept pasted licenses
   - MCP clients: {{ include "apigene.publicUrl" . }}/agent/<agent-name>/mcp
 
 Docs: https://docs.apigene.ai/

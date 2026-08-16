@@ -46,6 +46,10 @@ locals {
     )
     deploymentType = var.deployment_type
     databaseEnv    = var.database_env
+    license = {
+      publicKey = var.license_public_key
+      algorithm = var.license_algorithm
+    }
     copilot = {
       internalPublicUrlHostAlias = var.copilot_internal_public_url_host_alias
     }
