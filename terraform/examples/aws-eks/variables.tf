@@ -34,7 +34,7 @@ variable "letsencrypt_email" {
 variable "image_tag" {
   description = "Apigene image tag."
   type        = string
-  default     = "5.4.0"
+  default     = "latest"
 }
 
 variable "auth_secret_key" {

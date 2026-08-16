@@ -2,7 +2,7 @@
 
 tenant_name  = "acme"
 fqdn         = "apigene.example.com"
-image_tag    = "5.4.0"
+image_tag    = "latest"
 
 # Set > 0 only if you use port-forward/local access.
 public_url_port = 0

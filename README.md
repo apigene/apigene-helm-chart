@@ -84,7 +84,7 @@ See [`chart/apigene/values.yaml`](chart/apigene/values.yaml) for all options. Co
 
 ```yaml
 # Pin release
-imageTag: "5.4.0"
+imageTag: "latest"
 
 # Public URL users open in the browser
 publicUrl: "https://apigene.example.com"

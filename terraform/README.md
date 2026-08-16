@@ -66,7 +66,7 @@ aws_region        = "us-east-2"                  # AWS region
 root_domain       = "example.com"                # your domain
 hosted_zone_id    = "Z1234567890EXAMPLE"         # from step 2
 letsencrypt_email = "platform@example.com"       # cert notifications
-image_tag         = "5.4.0"                      # Apigene release
+image_tag         = "latest"                      # Apigene release
 
 use_staging_issuer = true   # start with staging; switch to false after verification
 ```
@@ -211,7 +211,7 @@ open http://localhost:8080
 | `root_domain` | Root DNS zone | `apigene.ai` | Yes |
 | `hosted_zone_id` | Route53 zone ID | — | Yes |
 | `letsencrypt_email` | Let's Encrypt registration email | — | Yes |
-| `image_tag` | Apigene release tag | `5.4.0` | No |
+| `image_tag` | Apigene release tag | `latest` | No |
 | `use_staging_issuer` | Use LE staging (for testing) | `false` | No |
 | `auth_secret_key` | Auth secret (auto-generated if empty) | `""` | No |
 | `deployment_type` | `SaaS` or `OnPrem` | `SaaS` | No |

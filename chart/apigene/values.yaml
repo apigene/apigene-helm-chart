@@ -5,7 +5,7 @@ nameOverride: ""
 fullnameOverride: ""
 
 # Pin all Apigene service images (public ECR). Same as APIGENE_IMAGE_TAG in docker-compose.
-imageTag: "5.4.0"
+imageTag: "latest"
 
 images:
   registry: public.ecr.aws/apigene

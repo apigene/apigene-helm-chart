@@ -3,7 +3,7 @@ name: apigene
 description: Customer-facing Helm chart for the Apigene self-hosted platform
 type: application
 version: 0.1.0
-appVersion: "5.4.0"
+appVersion: "latest"
 home: https://apigene.ai
 sources:
   - https://github.com/apigene/apigene-helm-chart

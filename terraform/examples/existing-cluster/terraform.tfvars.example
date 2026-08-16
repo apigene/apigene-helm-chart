@@ -6,7 +6,7 @@
 
 tenant_name  = "local"
 fqdn         = "apigene.localtest"
-image_tag    = "5.4.0"
+image_tag    = "latest"
 public_url_port = 8080
 copilot_internal_public_url_host_alias = true
 

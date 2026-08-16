@@ -57,7 +57,7 @@ Does **not** own:
 
 ### Pin release version
 
-1. Set `imageTag` in `values.yaml` (currently `5.4.0`)
+1. Set `imageTag` in `values.yaml` (currently `latest`)
 2. Align with `apigene-docker-compose` `APIGENE_IMAGE_TAG`
 
 ### Terraform infrastructure change

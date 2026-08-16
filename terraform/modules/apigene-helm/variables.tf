@@ -28,7 +28,7 @@ variable "fqdn" {
 variable "image_tag" {
   description = "Apigene image tag for all services."
   type        = string
-  default     = "5.4.0"
+  default     = "latest"
 }
 
 variable "auth_secret_key" {
