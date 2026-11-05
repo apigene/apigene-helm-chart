@@ -40,7 +40,7 @@ spec:
       {{- include "apigene.nodeScheduling" . | nindent 6 }}
       containers:
         - name: redis
-          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          image: {{ include "apigene.thirdPartyImage" (dict "image" .Values.redis.image "root" .) | quote }}
           imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
           command:
             - redis-server
