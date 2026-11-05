@@ -68,7 +68,7 @@ namespace:
 mongo:
   enabled: true
   image:
-    repository: mongo
+    repository: docker.io/library/mongo
     tag: "7"
     pullPolicy: IfNotPresent
   storage: 10Gi
@@ -84,7 +84,7 @@ externalMongo:
 redis:
   enabled: true
   image:
-    repository: redis
+    repository: docker.io/library/redis
     tag: 7-alpine
     pullPolicy: IfNotPresent
   port: 6379
@@ -141,6 +141,14 @@ ingress:
   tls:
     enabled: true
     secretName: ""
+
+# OpenShift Route. Use instead of ingress on OpenShift.
+route:
+  enabled: false
+  # Empty lets the router generate a hostname.
+  host: ""
+  # Router timeout; long-lived MCP streams need more than the 30s default.
+  timeout: 3600s
 
 # Node scheduling (images are linux/amd64).
 nodeSelector: {}
