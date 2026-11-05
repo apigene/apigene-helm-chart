@@ -133,6 +133,9 @@ redis
 {{- if and (not .Values.auth.existingSecret) (not .Values.auth.secretKey) }}
 {{- fail "auth.secretKey is required. Generate one with: openssl rand -hex 32" }}
 {{- end }}
+{{- if and (eq .Values.auth.provider "keycloak") (not .Values.auth.existingSecret) (not .Values.auth.keycloak.issuer) }}
+{{- fail "auth.keycloak.issuer is required when auth.provider=keycloak" }}
+{{- end }}
 {{- end }}
 
 {{- define "apigene.commonEnv" -}}
@@ -164,6 +167,20 @@ redis
   value: {{ .Values.cache.enabled | quote }}
 - name: LOG_ENV
   value: {{ .Values.logging.env | quote }}
+{{- with .Values.auth.keycloak.issuer }}
+- name: AUTH_KEYCLOAK_ISSUER
+  value: {{ . | quote }}
+- name: KEYCLOAK_ISSUER
+  value: {{ . | quote }}
+- name: AUTH_KEYCLOAK_ALLOWED_CLIENTS
+  value: {{ $.Values.auth.keycloak.allowedClients | default $.Values.auth.keycloak.clientId | quote }}
+- name: KEYCLOAK_CLIENT_ID
+  value: {{ $.Values.auth.keycloak.clientId | quote }}
+- name: KEYCLOAK_SCOPES
+  value: {{ $.Values.auth.keycloak.scopes | quote }}
+- name: NEXT_PUBLIC_KEYCLOAK_REDIRECT_URI
+  value: {{ $.Values.auth.keycloak.redirectUri | default (printf "%s/client-api/auth/keycloak/callback" (include "apigene.publicUrl" $)) | quote }}
+{{- end }}
 {{- end }}
 
 {{- define "apigene.waitForMongoInit" -}}

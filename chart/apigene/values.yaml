@@ -47,6 +47,18 @@ auth:
   existingSecret: ""
   # Key inside existingSecret for AUTH_APIGENE_SECRET_KEY (default key name shown).
   existingSecretKey: AUTH_APIGENE_SECRET_KEY
+  # Used when provider=keycloak. Points at the OL Hub realm; Gene adds no Keycloak of its own.
+  keycloak:
+    # Exact issuer, including the /auth path: https://<host>/auth/realms/ol-hub
+    issuer: ""
+    clientId: hub-spa
+    # Only for a confidential client. With existingSecret, put KEYCLOAK_CLIENT_SECRET there.
+    clientSecret: ""
+    scopes: openid email profile
+    # Allowed token azp values, comma-separated. When empty, follows clientId.
+    allowedClients: ""
+    # When empty, follows publicUrl.
+    redirectUri: ""
 
 cache:
   enabled: true
