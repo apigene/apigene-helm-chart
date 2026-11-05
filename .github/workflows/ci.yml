@@ -84,13 +84,29 @@ jobs:
         run: make terraform-validate
 
   # Slack status for chart / e2e / terraform (success or failure).
+  # This repo is public, so the org secret (visibility: private) is not injected.
+  # Set repository secret SLACK_WEBHOOK_DEPLOYMENT — same value as apigene-docker-compose.
+  # A missing secret must not fail CI.
   notify:
     name: Notify Slack
     needs: [chart, e2e, terraform]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
+      - name: Check Slack webhook configured
+        id: slack_cfg
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_DEPLOYMENT }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SLACK_WEBHOOK_DEPLOYMENT is not configured; skipping Slack notification."
+          fi
+
       - name: Build Slack payload
+        if: steps.slack_cfg.outputs.enabled == 'true'
         env:
           CHART_RESULT: ${{ needs.chart.result }}
           E2E_RESULT: ${{ needs.e2e.result }}
@@ -172,8 +188,11 @@ jobs:
             }' > "$RUNNER_TEMP/slack-payload.json"
 
       - name: Send Slack Notification
+        if: steps.slack_cfg.outputs.enabled == 'true'
         uses: slackapi/slack-github-action@v4.0.0
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_DEPLOYMENT }}
         with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_DEPLOYMENT }}
+          webhook: ${{ env.SLACK_WEBHOOK }}
           webhook-type: incoming-webhook
           payload-file-path: ${{ runner.temp }}/slack-payload.json
