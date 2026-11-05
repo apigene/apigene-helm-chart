@@ -118,6 +118,11 @@ redis:
     pullPolicy: IfNotPresent
   port: 6379
   resources: {}
+  # Require a password. The backend needs an image newer than 5.25.7 for this.
+  auth:
+    enabled: false
+    # With auth.existingSecret, put REDIS_PASSWORD in that secret.
+    password: ""
 
 externalRedis:
   enabled: false
