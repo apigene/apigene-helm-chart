@@ -50,6 +50,24 @@ spec:
             - "no"
             - --loglevel
             - warning
+            {{- if include "apigene.redisAuthEnabled" . }}
+            - --requirepass
+            - $(REDIS_PASSWORD)
+            {{- end }}
+          {{- if include "apigene.redisAuthEnabled" . }}
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "apigene.secretName" . }}
+                  key: REDIS_PASSWORD
+            # Read by redis-cli in the probes.
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "apigene.secretName" . }}
+                  key: REDIS_PASSWORD
+          {{- end }}
           ports:
             - name: redis
               containerPort: {{ .Values.redis.port }}
