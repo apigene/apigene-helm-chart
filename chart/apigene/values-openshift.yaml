@@ -4,7 +4,8 @@
 #     --set namespace.name=<project> \
 #     --set route.host=<host> \
 #     --set publicUrl=https://<host> \
-#     --set auth.secretKey="$APIGENE_AUTH_SECRET"
+#     --set auth.secretKey="$APIGENE_AUTH_SECRET" \
+#     --set mongo.auth.password="$APIGENE_MONGO_PASSWORD"
 
 deploymentType: OnPrem
 
@@ -14,5 +15,12 @@ service:
 route:
   enabled: true
 
+networkPolicy:
+  enabled: true
+  ingressNamespaceLabels:
+    network.openshift.io/policy-group: ingress
+
 mongo:
   storage: 10Gi
+  auth:
+    enabled: true
