@@ -9,6 +9,10 @@ imageTag: "latest"
 
 images:
   registry: public.ecr.aws/apigene
+  # Pull every image from one registry, including MongoDB, Redis and the init image.
+  # Images are expected under their short names: <mirror>/apigene-backend:<tag>,
+  # <mirror>/mongo:7. "./apigene images push" in apigene-docker-compose publishes them there.
+  mirror: ""
   pullPolicy: IfNotPresent
   pullSecrets: []
   # Optional per-service tag overrides (APIGENE_*_IMAGE_TAG in docker-compose):
@@ -74,6 +78,12 @@ namespace:
   # Use --create-namespace on helm install (avoids conflict with Helm's namespace flag).
   create: false
   name: apigene
+
+# Init containers that wait for dependencies.
+initImage:
+  repository: docker.io/library/busybox
+  tag: "1.36"
+  pullPolicy: IfNotPresent
 
 # --- Bundled MongoDB (default on) ---
 

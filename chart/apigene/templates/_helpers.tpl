@@ -47,26 +47,43 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- .Values.imageTag | default .Chart.AppVersion }}
 {{- end }}
 
+{{- define "apigene.registry" -}}
+{{- .Values.images.mirror | default .Values.images.registry | trimSuffix "/" }}
+{{- end }}
+
+{{/*
+Third-party image reference. With images.mirror set, the image comes from the
+mirror under its short name, such as <mirror>/mongo:7.
+Usage: include "apigene.thirdPartyImage" (dict "image" .Values.mongo.image "root" .)
+*/}}
+{{- define "apigene.thirdPartyImage" -}}
+{{- $repository := .image.repository -}}
+{{- with .root.Values.images.mirror -}}
+{{- $repository = printf "%s/%s" (trimSuffix "/" .) (base $repository) -}}
+{{- end -}}
+{{- printf "%s:%s" $repository .image.tag }}
+{{- end }}
+
 {{- define "apigene.backendImage" -}}
-{{- $registry := .Values.images.registry -}}
+{{- $registry := include "apigene.registry" . -}}
 {{- $tag := .Values.images.backendTag | default (include "apigene.imageTag" .) -}}
 {{- printf "%s/apigene-backend:%s" $registry $tag }}
 {{- end }}
 
 {{- define "apigene.copilotImage" -}}
-{{- $registry := .Values.images.registry -}}
+{{- $registry := include "apigene.registry" . -}}
 {{- $tag := .Values.images.copilotTag | default (include "apigene.imageTag" .) -}}
 {{- printf "%s/apigene-copilot:%s" $registry $tag }}
 {{- end }}
 
 {{- define "apigene.mcpGwImage" -}}
-{{- $registry := .Values.images.registry -}}
+{{- $registry := include "apigene.registry" . -}}
 {{- $tag := .Values.images.mcpGwTag | default (include "apigene.imageTag" .) -}}
 {{- printf "%s/apigene-mcp-gw:%s" $registry $tag }}
 {{- end }}
 
 {{- define "apigene.nginxImage" -}}
-{{- $registry := .Values.images.registry -}}
+{{- $registry := include "apigene.registry" . -}}
 {{- $tag := .Values.images.nginxTag | default (include "apigene.imageTag" .) -}}
 {{- printf "%s/apigene-nginx:%s" $registry $tag }}
 {{- end }}
@@ -198,7 +215,8 @@ true
 {{- define "apigene.waitForMongoInit" -}}
 {{- if and .Values.mongo.enabled (not .Values.externalMongo.enabled) }}
 - name: wait-for-mongo
-  image: docker.io/library/busybox:1.36
+  image: {{ include "apigene.thirdPartyImage" (dict "image" .Values.initImage "root" .) | quote }}
+  imagePullPolicy: {{ .Values.initImage.pullPolicy }}
   command:
     - sh
     - -c
@@ -213,7 +231,8 @@ true
 {{- define "apigene.waitForRedisInit" -}}
 {{- if and .Values.redis.enabled (not .Values.externalRedis.enabled) }}
 - name: wait-for-redis
-  image: docker.io/library/busybox:1.36
+  image: {{ include "apigene.thirdPartyImage" (dict "image" .Values.initImage "root" .) | quote }}
+  imagePullPolicy: {{ .Values.initImage.pullPolicy }}
   command:
     - sh
     - -c
@@ -227,7 +246,8 @@ true
 
 {{- define "apigene.waitForBackendInit" -}}
 - name: wait-for-backend
-  image: docker.io/library/busybox:1.36
+  image: {{ include "apigene.thirdPartyImage" (dict "image" .Values.initImage "root" .) | quote }}
+  imagePullPolicy: {{ .Values.initImage.pullPolicy }}
   command:
     - sh
     - -c

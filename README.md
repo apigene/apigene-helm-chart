@@ -136,6 +136,28 @@ cp customer.tfvars.example customer.tfvars
 terraform apply -var-file=customer.tfvars
 ```
 
+## Private registry
+
+When the cluster cannot reach public registries, publish the images to your own registry and set `images.mirror`. Every image then comes from there, including MongoDB, Redis and the init image.
+
+On a machine with access to your registry, using `apigene-docker-compose`:
+
+```bash
+./apigene images load
+./apigene images push registry.example.com/apigene
+```
+
+Then install with the same registry and tag:
+
+```bash
+helm install apigene ./chart/apigene -n apigene --create-namespace \
+  --set images.mirror=registry.example.com/apigene \
+  --set imageTag=5.25.7 \
+  --set auth.secretKey="$APIGENE_AUTH_SECRET"
+```
+
+Add `images.pullSecrets` when the registry requires a login.
+
 ## Upgrade
 
 ```bash
