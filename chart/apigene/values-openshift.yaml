@@ -1,0 +1,18 @@
+# OpenShift overrides.
+# Usage:
+#   helm install apigene ./chart/apigene -n <project> -f chart/apigene/values-openshift.yaml \
+#     --set namespace.name=<project> \
+#     --set route.host=<host> \
+#     --set publicUrl=https://<host> \
+#     --set auth.secretKey="$APIGENE_AUTH_SECRET"
+
+deploymentType: OnPrem
+
+service:
+  type: ClusterIP
+
+route:
+  enabled: true
+
+mongo:
+  storage: 10Gi

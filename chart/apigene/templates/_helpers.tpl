@@ -169,7 +169,7 @@ redis
 {{- define "apigene.waitForMongoInit" -}}
 {{- if and .Values.mongo.enabled (not .Values.externalMongo.enabled) }}
 - name: wait-for-mongo
-  image: busybox:1.36
+  image: docker.io/library/busybox:1.36
   command:
     - sh
     - -c
@@ -184,7 +184,7 @@ redis
 {{- define "apigene.waitForRedisInit" -}}
 {{- if and .Values.redis.enabled (not .Values.externalRedis.enabled) }}
 - name: wait-for-redis
-  image: busybox:1.36
+  image: docker.io/library/busybox:1.36
   command:
     - sh
     - -c
@@ -198,7 +198,7 @@ redis
 
 {{- define "apigene.waitForBackendInit" -}}
 - name: wait-for-backend
-  image: busybox:1.36
+  image: docker.io/library/busybox:1.36
   command:
     - sh
     - -c

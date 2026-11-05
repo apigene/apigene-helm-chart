@@ -1,0 +1,25 @@
+{{- if and .Values.route.enabled .Values.nginx.enabled }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: nginx
+  namespace: {{ include "apigene.namespace" . }}
+  labels:
+    {{- include "apigene.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nginx
+  annotations:
+    # MCP streams stay open far longer than the router's 30s default.
+    haproxy.router.openshift.io/timeout: {{ .Values.route.timeout | quote }}
+spec:
+  {{- with .Values.route.host }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: nginx
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+{{- end }}
