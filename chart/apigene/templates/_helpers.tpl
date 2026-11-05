@@ -133,14 +133,26 @@ redis
 {{- if and (not .Values.auth.existingSecret) (not .Values.auth.secretKey) }}
 {{- fail "auth.secretKey is required. Generate one with: openssl rand -hex 32" }}
 {{- end }}
+{{- if and (include "apigene.mongoAuthEnabled" .) (not .Values.auth.existingSecret) (not .Values.mongo.auth.password) }}
+{{- fail "mongo.auth.password is required when mongo.auth.enabled=true" }}
+{{- end }}
 {{- if and (eq .Values.auth.provider "keycloak") (not .Values.auth.existingSecret) (not .Values.auth.keycloak.issuer) }}
 {{- fail "auth.keycloak.issuer is required when auth.provider=keycloak" }}
 {{- end }}
 {{- end }}
 
+{{- define "apigene.mongoAuthEnabled" -}}
+{{- if and .Values.mongo.enabled .Values.mongo.auth.enabled (not .Values.externalMongo.enabled) -}}
+true
+{{- end -}}
+{{- end }}
+
 {{- define "apigene.commonEnv" -}}
+{{- /* With MongoDB auth the URL holds a password, so it comes from the secret. */ -}}
+{{- if not (include "apigene.mongoAuthEnabled" .) }}
 - name: MONGO_DB_URL
   value: {{ include "apigene.mongoUrl" . | quote }}
+{{- end }}
 - name: REDIS_HOST
   value: {{ include "apigene.redisHost" . | quote }}
 - name: REDIS_PORT

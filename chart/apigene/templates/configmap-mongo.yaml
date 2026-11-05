@@ -17,4 +17,8 @@ data:
       quiet: true
     net:
       bindIpAll: true
+    {{- if include "apigene.mongoAuthEnabled" . }}
+    security:
+      authorization: enabled
+    {{- end }}
 {{- end }}

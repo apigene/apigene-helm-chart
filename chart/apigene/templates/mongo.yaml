@@ -48,6 +48,34 @@ spec:
           ports:
             - name: mongo
               containerPort: 27017
+          {{- if include "apigene.mongoAuthEnabled" . }}
+          env:
+            - name: MONGO_USERNAME
+              value: {{ .Values.mongo.auth.username | quote }}
+            - name: MONGO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "apigene.secretName" . }}
+                  key: MONGO_PASSWORD
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - bash
+                  - -c
+                  - |
+                    # The localhost exception allows only the first user, so this
+                    # is a no-op once the user exists.
+                    until mongosh --quiet --eval 'db.runCommand({ping: 1})' >/dev/null 2>&1; do
+                      sleep 1
+                    done
+                    mongosh --quiet admin --eval '
+                      db.createUser({
+                        user: process.env.MONGO_USERNAME,
+                        pwd: process.env.MONGO_PASSWORD,
+                        roles: ["readWriteAnyDatabase", "dbAdminAnyDatabase"]
+                      })' >/dev/null 2>&1 || true
+          {{- end }}
           volumeMounts:
             - name: mongo-data
               mountPath: /data/db
