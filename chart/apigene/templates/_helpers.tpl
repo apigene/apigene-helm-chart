@@ -153,6 +153,9 @@ redis
 {{- if and (include "apigene.mongoAuthEnabled" .) (not .Values.auth.existingSecret) (not .Values.mongo.auth.password) }}
 {{- fail "mongo.auth.password is required when mongo.auth.enabled=true" }}
 {{- end }}
+{{- if and (include "apigene.redisAuthEnabled" .) (not .Values.auth.existingSecret) (not .Values.redis.auth.password) }}
+{{- fail "redis.auth.password is required when redis.auth.enabled=true" }}
+{{- end }}
 {{- if and (eq .Values.auth.provider "keycloak") (not .Values.auth.existingSecret) (not .Values.auth.keycloak.issuer) }}
 {{- fail "auth.keycloak.issuer is required when auth.provider=keycloak" }}
 {{- end }}
@@ -160,6 +163,12 @@ redis
 
 {{- define "apigene.mongoAuthEnabled" -}}
 {{- if and .Values.mongo.enabled .Values.mongo.auth.enabled (not .Values.externalMongo.enabled) -}}
+true
+{{- end -}}
+{{- end }}
+
+{{- define "apigene.redisAuthEnabled" -}}
+{{- if and .Values.redis.enabled .Values.redis.auth.enabled (not .Values.externalRedis.enabled) -}}
 true
 {{- end -}}
 {{- end }}
