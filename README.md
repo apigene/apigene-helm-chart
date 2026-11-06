@@ -143,8 +143,8 @@ When the cluster cannot reach public registries, publish the images to your own 
 On a machine with access to your registry, using `apigene-docker-compose`:
 
 ```bash
-./apigene images load
-./apigene images push registry.example.com/apigene
+./olgene images load
+./olgene images push registry.example.com/apigene
 ```
 
 Then install with the same registry and tag:
