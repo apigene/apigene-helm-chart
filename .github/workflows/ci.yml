@@ -25,7 +25,12 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v5
         with:
-          version: v3.14.4
+          version: v3.19.0
+
+      - name: Install kubeconform
+        run: |
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin kubeconform
 
       - name: Run chart tests
         run: ./scripts/ci.sh chart
@@ -51,7 +56,7 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v5
         with:
-          version: v3.14.4
+          version: v3.19.0
 
       - name: Deploy chart to k3d
         run: |

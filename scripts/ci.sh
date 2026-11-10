@@ -19,19 +19,52 @@ HELM_SET=(--set "auth.secretKey=${AUTH_SECRET}")
 CHART="${ROOT}/chart/apigene"
 
 run_chart_tests() {
+  local out
+  out="$(mktemp -d)"
+  local prod_secrets=(--set "mongo.auth.password=ci-mongo" --set "redis.auth.password=ci-redis")
+
   echo "==> Helm lint"
   helm lint "${CHART}" "${HELM_SET[@]}"
+  helm lint "${CHART}" -f "${CHART}/values-production.yaml" -f "${CHART}/values-aws.yaml" \
+    "${HELM_SET[@]}" "${prod_secrets[@]}"
 
   echo "==> Helm template (default values)"
-  helm template apigene "${CHART}" \
-    -n apigene --create-namespace \
-    "${HELM_SET[@]}" > /dev/null
+  helm template apigene "${CHART}" -n apigene "${HELM_SET[@]}" > "${out}/default.yaml"
 
   echo "==> Helm template (production values)"
-  helm template apigene "${CHART}" \
-    -n apigene --create-namespace \
+  helm template apigene "${CHART}" -n apigene \
     -f "${CHART}/values-production.yaml" \
-    "${HELM_SET[@]}" > /dev/null
+    "${HELM_SET[@]}" "${prod_secrets[@]}" > "${out}/production.yaml"
+
+  echo "==> Helm template (production + AWS ALB values)"
+  helm template apigene "${CHART}" -n apigene \
+    -f "${CHART}/values-production.yaml" -f "${CHART}/values-aws.yaml" \
+    --set publicUrl=https://apigene.example.com --set ingress.host=apigene.example.com \
+    "${HELM_SET[@]}" "${prod_secrets[@]}" > "${out}/aws.yaml"
+
+  echo "==> Helm template (OpenShift values)"
+  helm template apigene "${CHART}" -n apigene \
+    -f "${CHART}/values-openshift.yaml" \
+    "${HELM_SET[@]}" --set mongo.auth.password=ci-mongo > "${out}/openshift.yaml"
+
+  echo "==> Helm template (external MongoDB and Redis)"
+  helm template apigene "${CHART}" -n apigene "${HELM_SET[@]}" \
+    --set externalMongo.enabled=true --set externalMongo.url=mongodb://db:27017 \
+    --set externalRedis.enabled=true --set externalRedis.host=cache --set externalRedis.port=6380 \
+    > "${out}/external.yaml"
+  grep -q 'value: "6380"' "${out}/external.yaml" || { echo "externalRedis.port not applied" >&2; exit 1; }
+
+  echo "==> Resources follow the release namespace"
+  helm template apigene "${CHART}" -n customer-ns "${HELM_SET[@]}" \
+    | grep '^  namespace:' | grep -qv customer-ns && { echo "resource outside the release namespace" >&2; exit 1; }
+
+  if command -v kubeconform >/dev/null 2>&1; then
+    echo "==> kubeconform"
+    kubeconform -strict -summary -ignore-missing-schemas \
+      -kubernetes-version "${KUBE_VERSION:-1.34.0}" "${out}"/*.yaml
+  else
+    echo "(kubeconform not installed; skipping schema validation)"
+  fi
 
   echo "Chart tests passed."
 }

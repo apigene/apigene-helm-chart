@@ -6,7 +6,7 @@ Deploy the full Apigene self-hosted platform on Kubernetes using Terraform. This
 
 | Example | Use case |
 |---------|----------|
-| [`examples/aws-eks/`](examples/aws-eks/) | Full AWS reference: VPC, EKS, nginx-ingress, cert-manager, Route53, Apigene |
+| [`examples/aws-eks/`](examples/aws-eks/) | Full AWS reference: VPC, EKS, AWS Load Balancer Controller (ALB), ACM, Route53, Apigene |
 | [`examples/existing-cluster/`](examples/existing-cluster/) | On-prem / BYO cluster: nginx-ingress + Apigene only |
 
 ---
@@ -61,15 +61,14 @@ cp customer.tfvars.example customer.tfvars
 Edit `customer.tfvars` with your values:
 
 ```hcl
-tenant_name       = "acme"                      # subdomain + cluster prefix
-aws_region        = "us-east-2"                  # AWS region
-root_domain       = "example.com"                # your domain
-hosted_zone_id    = "Z1234567890EXAMPLE"         # from step 2
-letsencrypt_email = "platform@example.com"       # cert notifications
-image_tag         = "latest"                      # Apigene release
-
-use_staging_issuer = true   # start with staging; switch to false after verification
+tenant_name    = "acme"                 # subdomain + cluster prefix
+aws_region     = "us-east-2"            # AWS region
+root_domain    = "example.com"          # your domain
+hosted_zone_id = "Z1234567890EXAMPLE"   # from step 2
+# image_tag    = "5.26.4"               # empty = release pinned in the chart
 ```
+
+The TLS certificate comes from ACM, validated through a record in your hosted zone, and renews automatically. No Let's Encrypt setup is needed.
 
 Your platform URL will be: `https://{tenant_name}.{root_domain}` (e.g. `https://acme.example.com`).
 
@@ -109,12 +108,15 @@ terraform apply -var-file=customer.tfvars
 ```
 
 What gets created:
-1. **VPC** — public/private subnets, NAT gateway
-2. **EKS cluster** — control plane + managed node group (~10-15 min)
-3. **EKS addons** — vpc-cni, coredns, kube-proxy, EBS CSI driver
-4. **Kubernetes addons** — nginx-ingress (NLB), cert-manager, ClusterIssuer, gp3 StorageClass
-5. **DNS** — Route53 A record pointing to the NLB
-6. **Apigene** — Helm release with all services (backend, copilot, mcp-gw, nginx, mongo, redis)
+1. **VPC** — public/private subnets, NAT gateway (one per AZ with `single_nat_gateway = false`), optional flow logs
+2. **EKS cluster** — control plane with audit logs, managed node group (~10-15 min)
+3. **EKS addons** — vpc-cni (network policy on), coredns, kube-proxy, EBS CSI driver
+4. **AWS Load Balancer Controller** — IRSA role with the upstream IAM policy
+5. **ACM certificate** — DNS-validated in Route53
+6. **Apigene** — Helm release; its Ingress becomes an internet-facing ALB (TLS 1.3 policy, HTTP→HTTPS redirect, 3600s idle timeout for MCP streams)
+7. **DNS** — Route53 alias record pointing to the ALB
+
+MongoDB and Redis get generated passwords and MongoDB a nightly `mongodump` CronJob. Read them with `terraform output -raw` on the `apigene` module outputs; keep the state backend encrypted.
 
 ### 5. Verify the deployment
 
@@ -136,45 +138,28 @@ kubectl get pods -n apigene
 #   nginx-xxx            1/1   Running
 #   redis-xxx            1/1   Running
 
-# Check ingress and certificate
-kubectl get ingress,certificate -n apigene
+# Check the ingress (ADDRESS is the ALB DNS name)
+kubectl get ingress -n apigene
+terraform output alb_dns_name
 
 # Test the API
-curl -sk https://acme.example.com/api/health
+curl -s https://acme.example.com/api/health
 # Should return: {"status":"ok"}
 ```
 
-### 6. Switch to production TLS certificate
+### 6. Harden for production
 
-The initial deploy uses Let's Encrypt **staging** (browsers show a certificate warning). Once everything is working:
+Set these in `customer.tfvars` (see `customer.tfvars.example`):
 
-1. Edit `customer.tfvars`:
+| Setting | Why |
+|---------|-----|
+| `cluster_public_access_cidrs` | Only your admin networks can reach the Kubernetes API |
+| `alb_inbound_cidrs` / `waf_acl_arn` | Restrict or filter who reaches the ALB |
+| `single_nat_gateway = false` | No single point of failure for outbound traffic |
+| `enable_vpc_flow_logs = true` | Network audit trail |
+| `node_instance_types = ["m6i.large"]` | Non-burstable nodes (replaces the node group) |
 
-```hcl
-use_staging_issuer = false
-```
-
-2. Re-apply:
-
-```bash
-terraform apply -var-file=customer.tfvars
-```
-
-3. Force certificate renewal (the old staging cert is cached):
-
-```bash
-kubectl delete certificate -n apigene --all
-kubectl delete secret -n apigene apigene-tls 2>/dev/null || true
-```
-
-4. Wait for the new production certificate (~1-3 minutes):
-
-```bash
-kubectl get certificate -n apigene -w
-# Wait until READY shows True
-```
-
-5. Open `https://acme.example.com` — the browser warning should be gone.
+Copy the MongoDB backups off the cluster as well: AWS Backup or EBS snapshots of the `mongo-backup` volume.
 
 ### 7. Sign up and start using
 
@@ -210,9 +195,14 @@ open http://localhost:8080
 | `aws_region` | AWS region | `eu-central-1` | Yes |
 | `root_domain` | Root DNS zone | `apigene.ai` | Yes |
 | `hosted_zone_id` | Route53 zone ID | — | Yes |
-| `letsencrypt_email` | Let's Encrypt registration email | — | Yes |
-| `image_tag` | Apigene release tag | `latest` | No |
-| `use_staging_issuer` | Use LE staging (for testing) | `false` | No |
+| `image_tag` | Apigene release tag (empty = chart appVersion) | `""` | No |
+| `app_replicas` | Replicas for backend, copilot, mcp-gw, nginx | `2` | No |
+| `expose_api_docs` | Serve `/docs`, `/redoc`, `/openapi.json` | `false` | No |
+| `alb_inbound_cidrs` | CIDRs allowed to reach the ALB | `[]` (internet) | No |
+| `waf_acl_arn` | WAFv2 web ACL for the ALB | `""` | No |
+| `cluster_public_access_cidrs` | CIDRs allowed to reach the EKS API | `["0.0.0.0/0"]` | No |
+| `single_nat_gateway` | One NAT gateway instead of one per AZ | `true` | No |
+| `enable_vpc_flow_logs` | VPC flow logs to CloudWatch | `false` | No |
 | `auth_secret_key` | Auth secret (auto-generated if empty) | `""` | No |
 | `deployment_type` | `SaaS` or `OnPrem` | `SaaS` | No |
 | `license_public_key` | OnPrem license verify key (PEM / `base64:…`) | `""` | No |
@@ -230,11 +220,13 @@ Resulting URL: `https://{tenant_name}.{root_domain}`
 
 ```
 terraform/modules/
-├── vpc/           # VPC, 2 public + 2 private subnets, NAT gateway
-├── eks/           # EKS cluster, managed node group, OIDC, EBS CSI driver
-├── k8s-addons/    # nginx-ingress (NLB), cert-manager, ClusterIssuer, gp3 StorageClass
-├── dns/           # Route53 A record → NLB
-└── apigene-helm/  # Helm release: backend, copilot, mcp-gw, nginx, mongo, redis
+├── vpc/                          # VPC, 2 public + 2 private subnets, NAT gateway(s), flow logs
+├── eks/                          # EKS cluster, managed node group, OIDC, EBS CSI driver, audit logs
+├── aws-load-balancer-controller/ # Controller + IRSA role (ALB for the Ingress)
+├── acm-certificate/              # ACM certificate, Route53 validation
+├── k8s-addons/                   # gp3 StorageClass; ingress-nginx + cert-manager for non-AWS clusters
+├── dns/                          # Route53 alias → ALB
+└── apigene-helm/                 # Helm release: backend, copilot, mcp-gw, nginx, mongo, redis
 ```
 
 ## Testing
@@ -253,7 +245,7 @@ make terraform-validate
 terraform destroy -var-file=customer.tfvars
 ```
 
-MongoDB PVCs persist after destroy. Delete manually if needed:
+The gp3 StorageClass uses `reclaimPolicy: Retain`, so MongoDB volumes survive a destroy. Delete the PVCs, then the released EBS volumes, if you no longer need the data:
 
 ```bash
 kubectl delete pvc -l app.kubernetes.io/component=mongo -n apigene
@@ -266,8 +258,9 @@ kubectl delete pvc -l app.kubernetes.io/component=mongo -n apigene
 | `reading EKS Cluster (...): couldn't find resource` | Greenfield run: apply VPC+EKS first with `-target=module.vpc -target=module.eks`, then full apply. Providers use `module.eks` outputs (no cluster data source lookup). |
 | `terraform plan` fails with "no client config" | Ensure `depends_on = [module.eks]` is set on `k8s_addons`; complete phase 1 so the cluster exists |
 | Helm release `Unauthorized` | EKS token expired during long apply — re-run `terraform apply` |
-| Cert warning in browser | Still using staging issuer — set `use_staging_issuer = false` and re-apply |
-| Signup returns "Failed to create account" | Staging cert issue — copilot can't verify TLS to itself; switch to production issuer |
+| `data.aws_lb.apigene`: no matching load balancer | The controller has not created the ALB yet: `kubectl describe ingress nginx -n apigene` and `kubectl logs -n kube-system deploy/aws-load-balancer-controller`, then re-apply |
+| ACM validation hangs | The hosted zone is not authoritative for the domain (check the NS delegation) |
+| Upgrading from the ingress-nginx version | The apply removes ingress-nginx and cert-manager and moves DNS to the ALB; expect a short switch-over |
 | Pods stuck in `Pending` | Check StorageClass: `kubectl get sc` — gp3 should be default |
 | `ImagePullBackOff` | Images are amd64 only; ensure nodes are x86 instances |
 

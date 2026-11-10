@@ -44,8 +44,9 @@ echo ""
 
 check_json "nginx health" "/nginx-health" '"service"[[:space:]]*:[[:space:]]*"nginx"'
 check_json "backend health" "/api/health" '"status"[[:space:]]*:[[:space:]]*"ok"'
-check_status "OpenAPI" "/openapi.json" "200 401 403"
-check_status "API docs" "/docs" "200 401 403"
+# 404 when the docs are turned off (nginx.exposeApiDocs=false, the production default).
+check_status "OpenAPI" "/openapi.json" "200 401 403 404"
+check_status "API docs" "/docs" "200 401 403 404"
 check_status "Copilot UI" "/" "200 301 302 307 308 404"
 
 echo ""

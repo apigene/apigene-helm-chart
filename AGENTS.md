@@ -25,6 +25,7 @@ Does **not** own:
 | Values | `chart/apigene/values.yaml` |
 | Terraform modules | `terraform/modules/` |
 | Terraform examples | `terraform/examples/aws-eks/`, `terraform/examples/existing-cluster/` |
+| Values profiles | `values-production.yaml`, `values-aws.yaml` (EKS + ALB), `values-openshift.yaml` |
 | Test scripts | `scripts/smoke.sh`, `scripts/run-tests.sh`, `scripts/test-local-cluster.sh` |
 | Integration tests | `tests/integration.sh` |
 | Makefile | `Makefile` |
@@ -57,7 +58,7 @@ Does **not** own:
 
 ### Pin release version
 
-1. Set `imageTag` in `values.yaml` (currently `latest`)
+1. Bump `appVersion` in `Chart.yaml` (the default `imageTag`)
 2. Align with `apigene-docker-compose` `APIGENE_IMAGE_TAG`
 
 ### Terraform infrastructure change

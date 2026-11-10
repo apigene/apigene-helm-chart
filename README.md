@@ -39,11 +39,10 @@ helm install apigene ./chart/apigene \
   --set auth.secretKey="$APIGENE_AUTH_SECRET"
 ```
 
-Wait 2–3 minutes for all pods to become ready, then open the LoadBalancer URL:
+Wait 2–3 minutes for all pods to become ready, then port-forward (the default Service is `ClusterIP`; expose it through an ingress for real users):
 
 ```bash
-kubectl get svc nginx -n apigene
-# Or use port-forward:
+helm test apigene -n apigene
 kubectl port-forward -n apigene svc/nginx 8080:8080
 open http://localhost:8080
 ```
@@ -83,8 +82,8 @@ TEARDOWN=1 ./scripts/test-local-cluster.sh
 See [`chart/apigene/values.yaml`](chart/apigene/values.yaml) for all options. Common settings:
 
 ```yaml
-# Pin release
-imageTag: "latest"
+# Pin release (empty = the chart appVersion)
+imageTag: ""
 
 # Public URL users open in the browser
 publicUrl: "https://apigene.example.com"
@@ -104,9 +103,9 @@ auth:
 mongo:
   storage: 20Gi
 
-# Expose via LoadBalancer (default) or Ingress
+# ClusterIP (default) behind an Ingress; LoadBalancer serves plain HTTP
 service:
-  type: LoadBalancer
+  type: ClusterIP
   port: 8080
 
 ingress:
@@ -117,15 +116,48 @@ ingress:
     enabled: true
 ```
 
-Production example (Helm only):
+Production example (Helm only). `values-production.yaml` turns on MongoDB and Redis passwords, nightly MongoDB backups, two replicas per stateless service and hides the API docs:
 
 ```bash
-helm install apigene ./chart/apigene \
+helm install apigene ./chart/apigene -n apigene --create-namespace \
   -f chart/apigene/values-production.yaml \
   --set publicUrl=https://apigene.example.com \
+  --set ingress.host=apigene.example.com \
   --set auth.secretKey="$APIGENE_AUTH_SECRET" \
-  --set ingress.host=apigene.example.com
+  --set mongo.auth.password="$APIGENE_MONGO_PASSWORD" \
+  --set redis.auth.password="$APIGENE_REDIS_PASSWORD"
 ```
+
+Prefer keeping secrets out of Helm values: create a Secret (for example synced from AWS Secrets Manager by [External Secrets Operator](https://external-secrets.io/)) and set `auth.existingSecret`. See the key list in `values.yaml`.
+
+### Amazon EKS (ALB)
+
+On EKS, put an Application Load Balancer from the [AWS Load Balancer Controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/) in front of the chart instead of ingress-nginx. ingress-nginx was retired by Kubernetes SIG Network in March 2026 and gets no more security fixes.
+
+```bash
+helm install apigene ./chart/apigene -n apigene --create-namespace \
+  -f chart/apigene/values-production.yaml \
+  -f chart/apigene/values-aws.yaml \
+  --set publicUrl=https://apigene.example.com \
+  --set ingress.host=apigene.example.com \
+  --set ingress.alb.certificateArn="$ACM_CERT_ARN" \
+  --set auth.existingSecret=apigene-env
+```
+
+```
+Route53 → ALB (ACM TLS, WAF, idle timeout 3600s) → nginx pods (IP targets) → copilot / backend / mcp-gw
+```
+
+The in-cluster `nginx` stays as the application router (path routing, MCP streaming, Keycloak sign-up block). The ALB replaces only the ingress controller and cert-manager. `ingress.alb` covers the certificate, scheme, WAF, inbound CIDRs, IngressGroup and load balancer attributes.
+
+**Why not API Gateway in front?** API Gateway integrations time out after 29 seconds (15 minutes with REST API response streaming). MCP sessions stay open for up to an hour, so API Gateway would cut them. Use AWS WAF on the ALB for rate limiting and filtering.
+
+### Security defaults
+
+- Pods run as non-root with `seccompProfile: RuntimeDefault`, no privilege escalation and all capabilities dropped (Pod Security Standards `restricted`). nginx, MongoDB, Redis and the init containers use a read-only root filesystem. Override per component with `<component>.podSecurityContext` and `<component>.securityContext`.
+- A dedicated ServiceAccount without a mounted API token. Add IRSA with `serviceAccount.annotations`, or associate an EKS Pod Identity role with it.
+- `networkPolicy.enabled` limits inbound traffic to the namespace plus the ingress path. On EKS, enable network policy in the VPC CNI add-on.
+- Changing the secret or the nginx config restarts the affected pods (checksum annotations).
 
 For AWS EKS or on-prem cluster deployment via Terraform, see [`terraform/README.md`](terraform/README.md):
 
@@ -160,12 +192,25 @@ Add `images.pullSecrets` when the registry requires a login.
 
 ## Upgrade
 
+Keep your settings in a values file and pass it on every upgrade. `--reuse-values` skips new chart defaults.
+
 ```bash
-helm upgrade apigene ./chart/apigene \
-  --namespace apigene \
-  --set imageTag=5.3.0 \
-  --reuse-values
+helm upgrade apigene ./chart/apigene -n apigene -f my-values.yaml --set imageTag=5.26.4
 ```
+
+### Upgrading from chart 0.1.x
+
+- **MongoDB StatefulSet.** The PVC template labels no longer carry versions, and Kubernetes does not allow editing them in place. Before the first upgrade, delete the StatefulSet object only; the pod and its volume stay:
+
+  ```bash
+  kubectl delete statefulset mongo -n apigene --cascade=orphan
+  helm upgrade apigene ./chart/apigene -n apigene -f my-values.yaml
+  ```
+
+- **Namespace.** Resources now go to the release namespace (`helm -n`). `namespace.name` still overrides it.
+- **Service type.** The default is `ClusterIP`. Set `service.type=LoadBalancer` to keep the old behaviour.
+- **Non-root pods.** Every container now runs as a non-root user. MongoDB's existing files get group access through `fsGroup` on the next start.
+- **Images.** The default tag is the chart `appVersion` instead of `latest`. MongoDB, Redis and busybox come from ECR Public (`public.ecr.aws/docker/library`) to avoid Docker Hub rate limits.
 
 ## Uninstall
 
@@ -200,6 +245,9 @@ Header: `apigene-api-key: <your-api-key>` (from Settings → API key in the UI)
 | Backend `CrashLoopBackOff` | `kubectl logs -n apigene -l app.kubernetes.io/component=backend` |
 | UI loads but API fails | Ensure `publicUrl` matches the URL in your browser |
 | `ImagePullBackOff` on Apple Silicon | Images are amd64; use an amd64 node pool |
+| `container has runAsNonRoot and image will run as root` | A custom image without a numeric user; set `<component>.podSecurityContext.runAsUser` |
+| `/docs` returns 404 | `nginx.exposeApiDocs` is off (the production default) |
+| MCP stream drops after 60s behind an ALB | Set `ingress.alb.idleTimeoutSeconds` (default 3600) |
 
 ```bash
 kubectl get pods -n apigene
