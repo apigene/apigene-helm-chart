@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
 # Post-install health checks against the Apigene nginx entry point.
 # Port-forward friendly: BASE_URL=http://localhost:8080 ./scripts/smoke.sh
+# Through a Gateway reached by IP or port-forward, set HOST_HEADER to its hostname.
 
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:8080}"
 BASE_URL="${BASE_URL%/}"
+HOST_HEADER="${HOST_HEADER:-}"
+
+CURL=(curl)
+if [[ -n "${HOST_HEADER}" ]]; then
+  CURL+=(-H "Host: ${HOST_HEADER}")
+fi
 
 PASS=0
 FAIL=0
@@ -16,8 +23,8 @@ fail() { echo "  FAIL $1" >&2; FAIL=$((FAIL + 1)); }
 check_json() {
   local name="$1" path="$2" pattern="$3"
   local body code
-  body="$(curl -fsS --max-time 30 "${BASE_URL}${path}" 2>/dev/null || true)"
-  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "${BASE_URL}${path}" 2>/dev/null || echo "?")"
+  body="$("${CURL[@]}" -fsS --max-time 30 "${BASE_URL}${path}" 2>/dev/null || true)"
+  code="$("${CURL[@]}" -s -o /dev/null -w '%{http_code}' --max-time 30 "${BASE_URL}${path}" 2>/dev/null || echo "?")"
   if echo "$body" | grep -qE "$pattern"; then
     pass "${name} (${path}) HTTP ${code}"
   else
@@ -28,7 +35,7 @@ check_json() {
 check_status() {
   local name="$1" path="$2" expected="$3"
   local code
-  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "${BASE_URL}${path}" 2>/dev/null || echo "?")"
+  code="$("${CURL[@]}" -s -o /dev/null -w '%{http_code}' --max-time 30 "${BASE_URL}${path}" 2>/dev/null || echo "?")"
   if [[ " ${expected} " == *" ${code} "* ]]; then
     pass "${name} (${path}) HTTP ${code}"
   else
@@ -39,7 +46,7 @@ check_status() {
 command -v curl >/dev/null 2>&1 || { echo "error: curl is required" >&2; exit 1; }
 
 echo "Apigene smoke tests"
-echo "Base URL: ${BASE_URL}"
+echo "Base URL: ${BASE_URL}${HOST_HEADER:+ (Host: ${HOST_HEADER})}"
 echo ""
 
 check_json "nginx health" "/nginx-health" '"service"[[:space:]]*:[[:space:]]*"nginx"'

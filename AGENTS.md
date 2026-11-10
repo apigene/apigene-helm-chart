@@ -25,9 +25,9 @@ Does **not** own:
 | Values | `chart/apigene/values.yaml` |
 | Terraform modules | `terraform/modules/` |
 | Terraform examples | `terraform/examples/aws-eks/`, `terraform/examples/existing-cluster/` |
-| Values profiles | `values-production.yaml`, `values-aws.yaml` (EKS + ALB), `values-openshift.yaml` |
+| Values profiles | `values-production.yaml` (Gateway API + Envoy Gateway), `values-aws.yaml` (EKS + ALB Gateway), `values-openshift.yaml` |
 | Test scripts | `scripts/smoke.sh`, `scripts/run-tests.sh`, `scripts/test-local-cluster.sh` |
-| Integration tests | `tests/integration.sh` |
+| Integration tests | `tests/integration.sh`, `scripts/gateway-smoke.sh` (through the Gateway) |
 | Makefile | `Makefile` |
 
 ## Choose your path
@@ -35,7 +35,7 @@ Does **not** own:
 | Goal | Use |
 |------|-----|
 | Quick K8s install | `helm install` with `chart/apigene/` |
-| Local k3d e2e | `TEARDOWN=1 ./scripts/test-local-cluster.sh` |
+| Local k3d e2e | `TEARDOWN=1 ./scripts/test-local-cluster.sh` (`GATEWAY=1` adds Envoy Gateway; needs an amd64 host) |
 | AWS EKS + Terraform | `terraform/examples/aws-eks/` |
 | Existing cluster + Terraform | `terraform/examples/existing-cluster/` |
 
@@ -110,4 +110,5 @@ If found in the repo, remove and rotate any exposed secrets.
 - Use example files (`*.example`) as templates only
 - Run smoke/integration tests after chart changes
 - Do not commit Terraform state or real tfvars
-- Ask before changing production Terraform modules or DNS/ingress config
+- Ask before changing production Terraform modules or DNS/Gateway config
+- Exposure is Gateway API only (no Ingress, no ingress-nginx); update `scripts/update-gateway-api-crds.sh` with the AWS Load Balancer Controller version

@@ -1,13 +1,13 @@
 # Apigene Kubernetes — Terraform Deployment
 
-Deploy the full Apigene self-hosted platform on Kubernetes using Terraform. This package provisions AWS infrastructure (optional) and installs the [Apigene Helm chart](../chart/apigene) with production-ready ingress and TLS.
+Deploy the full Apigene self-hosted platform on Kubernetes using Terraform. This package provisions AWS infrastructure (optional) and installs the [Apigene Helm chart](../chart/apigene) with production-ready TLS through the Kubernetes Gateway API.
 
 ## Examples
 
 | Example | Use case |
 |---------|----------|
 | [`examples/aws-eks/`](examples/aws-eks/) | Full AWS reference: VPC, EKS, AWS Load Balancer Controller (ALB), ACM, Route53, Apigene |
-| [`examples/existing-cluster/`](examples/existing-cluster/) | On-prem / BYO cluster: nginx-ingress + Apigene only |
+| [`examples/existing-cluster/`](examples/existing-cluster/) | On-prem / BYO cluster: Envoy Gateway (Gateway API) + cert-manager + Apigene |
 
 ---
 
@@ -111,9 +111,9 @@ What gets created:
 1. **VPC** — public/private subnets, NAT gateway (one per AZ with `single_nat_gateway = false`), optional flow logs
 2. **EKS cluster** — control plane with audit logs, managed node group (~10-15 min)
 3. **EKS addons** — vpc-cni (network policy on), coredns, kube-proxy, EBS CSI driver
-4. **AWS Load Balancer Controller** — IRSA role with the upstream IAM policy
+4. **AWS Load Balancer Controller** — IRSA role with the upstream IAM policy, Gateway API CRDs (installed first) and the `alb` GatewayClass
 5. **ACM certificate** — DNS-validated in Route53
-6. **Apigene** — Helm release; its Ingress becomes an internet-facing ALB (TLS 1.3 policy, HTTP→HTTPS redirect, 3600s idle timeout for MCP streams)
+6. **Apigene** — Helm release; its Gateway API `Gateway` becomes an internet-facing ALB (TLS 1.3 policy, HTTP→HTTPS redirect, 3600s idle timeout for MCP streams, nginx pods as IP targets)
 7. **DNS** — Route53 alias record pointing to the ALB
 
 MongoDB and Redis get generated passwords and MongoDB a nightly `mongodump` CronJob. Read them with `terraform output -raw` on the `apigene` module outputs; keep the state backend encrypted.
@@ -138,8 +138,8 @@ kubectl get pods -n apigene
 #   nginx-xxx            1/1   Running
 #   redis-xxx            1/1   Running
 
-# Check the ingress (ADDRESS is the ALB DNS name)
-kubectl get ingress -n apigene
+# Check the Gateway (ADDRESS is the ALB DNS name) and its route
+kubectl get gateway,httproute -n apigene
 terraform output alb_dns_name
 
 # Test the API
@@ -222,9 +222,9 @@ Resulting URL: `https://{tenant_name}.{root_domain}`
 terraform/modules/
 ├── vpc/                          # VPC, 2 public + 2 private subnets, NAT gateway(s), flow logs
 ├── eks/                          # EKS cluster, managed node group, OIDC, EBS CSI driver, audit logs
-├── aws-load-balancer-controller/ # Controller + IRSA role (ALB for the Ingress)
+├── aws-load-balancer-controller/ # Controller + IRSA role, Gateway API CRDs, GatewayClass alb
 ├── acm-certificate/              # ACM certificate, Route53 validation
-├── k8s-addons/                   # gp3 StorageClass; ingress-nginx + cert-manager for non-AWS clusters
+├── k8s-addons/                   # gp3 StorageClass; Envoy Gateway + cert-manager for non-AWS clusters
 ├── dns/                          # Route53 alias → ALB
 └── apigene-helm/                 # Helm release: backend, copilot, mcp-gw, nginx, mongo, redis
 ```
@@ -258,9 +258,9 @@ kubectl delete pvc -l app.kubernetes.io/component=mongo -n apigene
 | `reading EKS Cluster (...): couldn't find resource` | Greenfield run: apply VPC+EKS first with `-target=module.vpc -target=module.eks`, then full apply. Providers use `module.eks` outputs (no cluster data source lookup). |
 | `terraform plan` fails with "no client config" | Ensure `depends_on = [module.eks]` is set on `k8s_addons`; complete phase 1 so the cluster exists |
 | Helm release `Unauthorized` | EKS token expired during long apply — re-run `terraform apply` |
-| `data.aws_lb.apigene`: no matching load balancer | The controller has not created the ALB yet: `kubectl describe ingress nginx -n apigene` and `kubectl logs -n kube-system deploy/aws-load-balancer-controller`, then re-apply |
+| `data.aws_lb.apigene`: no matching load balancer | The controller has not created the ALB yet: `kubectl describe gateway apigene -n apigene` and `kubectl logs -n kube-system deploy/aws-load-balancer-controller`, then re-apply |
+| Gateway stays `PROGRAMMED Unknown` | The controller started before the Gateway API CRDs existed: `kubectl rollout restart -n kube-system deploy/aws-load-balancer-controller` |
 | ACM validation hangs | The hosted zone is not authoritative for the domain (check the NS delegation) |
-| Upgrading from the ingress-nginx version | The apply removes ingress-nginx and cert-manager and moves DNS to the ALB; expect a short switch-over |
 | Pods stuck in `Pending` | Check StorageClass: `kubectl get sc` — gp3 should be default |
 | `ImagePullBackOff` | Images are amd64 only; ensure nodes are x86 instances |
 

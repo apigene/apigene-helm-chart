@@ -58,16 +58,21 @@ jobs:
         with:
           version: v3.19.0
 
-      - name: Deploy chart to k3d
+      - name: Deploy chart to k3d (with Envoy Gateway)
         run: |
           chmod +x scripts/*.sh tests/*.sh
-          SKIP_TESTS=1 TEARDOWN=0 ./scripts/test-local-cluster.sh
+          GATEWAY=1 SKIP_TESTS=1 TEARDOWN=0 ./scripts/test-local-cluster.sh
 
       - name: Smoke and integration tests
         run: ./scripts/ci-e2e-tests.sh
         env:
           APIGENE_NAMESPACE: apigene
           APIGENE_PORT: "18080"
+
+      - name: Smoke tests through the Gateway
+        run: ./scripts/gateway-smoke.sh
+        env:
+          APIGENE_NAMESPACE: apigene
 
       - name: Tear down k3d cluster
         if: always()
