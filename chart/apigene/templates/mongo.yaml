@@ -76,11 +76,13 @@ spec:
                     until mongosh --quiet --eval 'db.runCommand({ping: 1})' >/dev/null 2>&1; do
                       sleep 1
                     done
+                    # "backup" lets the mongo-backup CronJob run mongodump, which reads
+                    # admin.system.version and the users that the other roles cannot.
                     mongosh --quiet admin --eval '
                       db.createUser({
                         user: process.env.MONGO_USERNAME,
                         pwd: process.env.MONGO_PASSWORD,
-                        roles: ["readWriteAnyDatabase", "dbAdminAnyDatabase"]
+                        roles: ["readWriteAnyDatabase", "dbAdminAnyDatabase", "backup"]
                       })' >/dev/null 2>&1 || true
           {{- end }}
           volumeMounts:

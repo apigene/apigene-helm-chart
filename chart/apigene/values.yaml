@@ -312,51 +312,84 @@ nginx:
     readOnlyRootFilesystem: true
   # Serve /docs, /redoc and /openapi.json publicly. Turn off for customer-facing installs.
   exposeApiDocs: true
-  # Pass X-Forwarded-Proto from the load balancer (ALB / ingress) to the apps, so they
-  # see https when TLS ends in front of nginx. Disable if nginx is exposed directly.
+  # Pass X-Forwarded-Proto from the load balancer / Gateway to the apps, so they see
+  # https when TLS ends in front of nginx. Disable if nginx is exposed directly.
   trustForwardedProto: true
 
 # --- Exposure ---
 
 service:
-  # ClusterIP by default: expose through ingress (TLS) or port-forward.
+  # ClusterIP by default: expose through the Gateway (TLS) or port-forward.
   # LoadBalancer publishes plain HTTP on service.port; add TLS annotations if you use it.
   type: ClusterIP
   port: 8080
   annotations: {}
 
-ingress:
+# Kubernetes Gateway API (gateway.networking.k8s.io/v1): a Gateway plus an HTTPRoute to
+# the in-cluster nginx router. Needs a Gateway API implementation in the cluster, such as
+# the AWS Load Balancer Controller (ALB), Envoy Gateway, Istio, Cilium or Traefik.
+gateway:
   enabled: false
-  # "alb" (AWS Load Balancer Controller), "nginx", or any other IngressClass.
-  className: nginx
-  # Extra annotations, merged over the ALB defaults below.
+  # Create the Gateway in this release. Set false to attach the HTTPRoute to a Gateway
+  # the platform already runs (parentRefs).
+  create: true
+  # GatewayClass, e.g. "alb" (AWS Load Balancer Controller) or "eg" (Envoy Gateway).
+  className: ""
+  # Hostname users open. Empty uses the publicUrl hostname.
+  host: ""
+  # Gateway annotations, e.g. cert-manager.io/cluster-issuer: letsencrypt-prod.
   annotations: {}
-  host: apigene.example.com
   tls:
     enabled: true
-    # Ignored for className=alb (the certificate comes from ACM).
+    # kubernetes.io/tls Secret for the HTTPS listener. Empty: <fullname>-tls, which
+    # cert-manager creates when the Gateway has a cert-manager.io/cluster-issuer
+    # annotation. Not used with gateway.aws.enabled (the certificate comes from ACM).
     secretName: ""
-  # Used only when className=alb.
-  alb:
+  # With create=false: the Gateway listeners to attach the HTTPRoute to.
+  parentRefs: []
+  #   - name: shared-gateway
+  #     namespace: gateway-system
+  #     sectionName: https
+  # HTTPRoute timeouts. nginx enforces the per-path limits; the Gateway only has to let
+  # hour-long MCP streams through (Envoy's default route timeout is 15s). Not rendered
+  # with gateway.aws.enabled: the ALB has no per-route timeout (idleTimeoutSeconds).
+  # Set to {} for implementations that reject HTTPRoute timeouts.
+  timeouts:
+    request: 3600s
+  # Envoy Gateway (GatewayClass "eg" from terraform/modules/k8s-addons): a
+  # ClientTrafficPolicy so idle MCP streams outlive Envoy's 5-minute stream idle timeout.
+  envoy:
+    enabled: false
+    streamIdleTimeout: 1h
+  # AWS Load Balancer Controller (GatewayClass controllerName gateway.k8s.aws/alb):
+  # renders a LoadBalancerConfiguration (with create=true) and a TargetGroupConfiguration
+  # that registers the nginx pods as IP targets.
+  aws:
+    enabled: false
     scheme: internet-facing
+    # Fixed ALB name (max 32 characters), so Terraform can look it up. Empty: generated.
+    loadBalancerName: ""
     # ACM certificate ARN. Empty lets the controller discover an ACM certificate for host.
     certificateArn: ""
     sslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
     # MCP streams stay open; the ALB default of 60s would cut them.
     idleTimeoutSeconds: 3600
-    # Share one ALB across several Ingresses.
-    groupName: ""
-    # Restrict who can reach the ALB, e.g. ["203.0.113.0/24"]. Empty allows 0.0.0.0/0.
-    inboundCidrs: []
+    # Who may reach the ALB, e.g. ["203.0.113.0/24"]. Empty allows 0.0.0.0/0.
+    sourceRanges: []
+    # Subnet IDs or names for the ALB. Empty: discovery via the kubernetes.io/role/elb
+    # (internet-facing) or kubernetes.io/role/internal-elb (internal) subnet tags.
+    subnets: []
     # AWS WAFv2 web ACL ARN to attach.
     wafv2AclArn: ""
-    # Extra load balancer attributes, e.g. deletion_protection.enabled=true,
-    # access_logs.s3.enabled=true,access_logs.s3.bucket=my-bucket
+    # Extra load balancer attributes, e.g.
+    #   - {key: deletion_protection.enabled, value: "true"}
+    #   - {key: access_logs.s3.enabled, value: "true"}
+    #   - {key: access_logs.s3.bucket, value: my-bucket}
     extraAttributes: []
     # AWS tags for the ALB and target group, e.g. {Project: apigene}.
     tags: {}
 
-# OpenShift Route. Use instead of ingress on OpenShift.
+# OpenShift Route. Use instead of the Gateway on OpenShift releases without Gateway API.
 route:
   enabled: false
   # Empty lets the router generate a hostname.
@@ -364,13 +397,14 @@ route:
   # Router timeout; long-lived MCP streams need more than the 30s default.
   timeout: 3600s
 
-# Restrict inbound traffic to this namespace plus the ingress path into nginx.
+# Restrict inbound traffic to this namespace plus the Gateway path into nginx.
 # Outbound traffic stays open: Keycloak, LLM providers and customer APIs need it.
 # On EKS, enable network policy in the VPC CNI add-on or these policies do nothing.
 networkPolicy:
   enabled: false
-  # Labels on the ingress controller's namespace (nginx / Traefik / OpenShift router).
+  # Labels on the namespace of the Gateway proxies (e.g. envoy-gateway-system) or of the
+  # OpenShift router.
   ingressNamespaceLabels: {}
-  # CIDRs allowed to reach nginx directly. With an ALB in IP target mode the traffic
-  # comes from the ALB's addresses, so use the VPC CIDR here.
+  # CIDRs allowed to reach nginx directly. An ALB with IP targets connects from its
+  # addresses inside the VPC, so use the VPC CIDR here.
   ingressCidrs: []

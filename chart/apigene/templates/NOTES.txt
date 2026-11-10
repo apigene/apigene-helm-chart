@@ -12,17 +12,21 @@ Apigene is starting. Pods may take 2–3 minutes to become ready.
 
 2. Access the platform:
 
-{{- if .Values.ingress.enabled }}
+{{- if .Values.gateway.enabled }}
 
-  {{ if .Values.ingress.tls.enabled }}https{{ else }}http{{ end }}://{{ .Values.ingress.host }}
-{{- if eq .Values.ingress.className "alb" }}
+  {{ if .Values.gateway.tls.enabled }}https{{ else }}http{{ end }}://{{ include "apigene.gatewayHost" . }}
+{{- if .Values.gateway.create }}
 
-  The AWS Load Balancer Controller provisions the ALB. Point DNS at its hostname:
+  Point DNS at the Gateway address{{ if .Values.gateway.aws.enabled }} (the ALB hostname, once the AWS Load Balancer Controller has created it){{ end }}:
 
-  kubectl get ingress nginx -n {{ include "apigene.namespace" . }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+  kubectl get gateway {{ include "apigene.fullname" . }} -n {{ include "apigene.namespace" . }} -o jsonpath='{.status.addresses[0].value}'
+
+  Route status: kubectl describe httproute {{ include "apigene.fullname" . }} -n {{ include "apigene.namespace" . }}
 {{- else }}
 
-  Ensure DNS points to your ingress controller and TLS is configured.
+  The HTTPRoute is attached to your existing Gateway; check that it was accepted:
+
+  kubectl describe httproute {{ include "apigene.fullname" . }} -n {{ include "apigene.namespace" . }}
 {{- end }}
 
 {{- else if .Values.route.enabled }}
@@ -70,7 +74,7 @@ Apigene is starting. Pods may take 2–3 minutes to become ready.
 {{- $warnings = append $warnings "Redis runs without a password. Set redis.auth.enabled=true and redis.auth.password." }}
 {{- end }}
 {{- if eq .Values.service.type "LoadBalancer" }}
-{{- $warnings = append $warnings "service.type=LoadBalancer serves plain HTTP. Prefer ingress with TLS." }}
+{{- $warnings = append $warnings "service.type=LoadBalancer serves plain HTTP. Prefer the Gateway with TLS." }}
 {{- end }}
 {{- if not (hasPrefix "https://" (include "apigene.publicUrl" .)) }}
 {{- $warnings = append $warnings "publicUrl is not https. Set it to the URL users open in the browser." }}

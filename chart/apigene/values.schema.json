@@ -126,21 +126,55 @@
         "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
       }
     },
-    "ingress": {
+    "gateway": {
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" },
+        "create": { "type": "boolean" },
         "className": { "type": "string" },
         "host": { "type": "string" },
         "annotations": { "type": "object" },
-        "alb": {
+        "tls": {
           "type": "object",
           "properties": {
+            "enabled": { "type": "boolean" },
+            "secretName": { "type": "string" }
+          }
+        },
+        "parentRefs": {
+          "type": "array",
+          "items": { "type": "object", "required": ["name"] }
+        },
+        "timeouts": {
+          "type": ["object", "null"],
+          "properties": {
+            "request": { "type": "string", "pattern": "^([0-9]{1,5}(h|m|s|ms)){1,4}$" },
+            "backendRequest": { "type": "string", "pattern": "^([0-9]{1,5}(h|m|s|ms)){1,4}$" }
+          }
+        },
+        "envoy": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "streamIdleTimeout": { "type": "string", "pattern": "^([0-9]{1,5}(h|m|s|ms)){1,4}$" }
+          }
+        },
+        "aws": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
             "scheme": { "enum": ["internet-facing", "internal"] },
+            "loadBalancerName": { "type": "string", "pattern": "^$|^[A-Za-z0-9](?:[A-Za-z0-9-]{0,30}[A-Za-z0-9])?$" },
             "certificateArn": { "type": "string" },
+            "sslPolicy": { "type": "string" },
             "idleTimeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 4000 },
-            "inboundCidrs": { "type": "array", "items": { "type": "string" } },
-            "extraAttributes": { "type": "array", "items": { "type": "string" } },
+            "sourceRanges": { "type": "array", "items": { "type": "string" } },
+            "subnets": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "wafv2AclArn": { "type": "string" },
+            "extraAttributes": {
+              "type": "array",
+              "items": { "type": "object", "required": ["key", "value"] }
+            },
             "tags": { "type": "object" }
           }
         }

@@ -1,0 +1,223 @@
+{{- if and .Values.gateway.enabled .Values.nginx.enabled }}
+{{- $gw := .Values.gateway }}
+{{- $name := include "apigene.fullname" . }}
+{{- $ns := include "apigene.namespace" . }}
+{{- $host := include "apigene.gatewayHost" . }}
+{{- /* A null value removes an annotation set by another values file. */}}
+{{- $annotations := dict }}
+{{- range $k, $v := ($gw.annotations | default dict) }}
+{{- if not (kindIs "invalid" $v) }}
+{{- $_ := set $annotations $k $v }}
+{{- end }}
+{{- end }}
+{{- if $gw.create }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "apigene.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+  {{- with $annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  gatewayClassName: {{ $gw.className | quote }}
+  {{- if $gw.aws.enabled }}
+  infrastructure:
+    parametersRef:
+      group: gateway.k8s.aws
+      kind: LoadBalancerConfiguration
+      name: {{ $name }}
+  {{- end }}
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: {{ $host | quote }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- if $gw.tls.enabled }}
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: {{ $host | quote }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+      {{- if not $gw.aws.enabled }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: {{ $gw.tls.secretName | default (printf "%s-tls" $name) }}
+      {{- end }}
+    {{- end }}
+---
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "apigene.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nginx
+spec:
+  parentRefs:
+    {{- if $gw.create }}
+    - name: {{ $name }}
+      sectionName: {{ ternary "https" "http" $gw.tls.enabled }}
+    {{- else }}
+    {{- toYaml $gw.parentRefs | nindent 4 }}
+    {{- end }}
+  hostnames:
+    - {{ $host | quote }}
+  rules:
+    # nginx routes /api, /docs, the MCP gateway and the UI, as in docker-compose.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: nginx
+          port: {{ .Values.service.port }}
+      {{- if and $gw.timeouts (not $gw.aws.enabled) }}
+      timeouts:
+        {{- toYaml $gw.timeouts | nindent 8 }}
+      {{- end }}
+{{- if and $gw.create $gw.envoy.enabled }}
+---
+# Envoy Gateway: keep idle MCP streams open (Envoy's default stream idle timeout is 5m).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "apigene.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $name }}
+  timeout:
+    http:
+      streamIdleTimeout: {{ $gw.envoy.streamIdleTimeout | quote }}
+      idleTimeout: {{ $gw.envoy.streamIdleTimeout | quote }}
+{{- end }}
+{{- if and $gw.create $gw.tls.enabled }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $name }}-https-redirect
+  namespace: {{ $ns }}
+  labels:
+    {{- include "apigene.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  parentRefs:
+    - name: {{ $name }}
+      sectionName: http
+  hostnames:
+    - {{ $host | quote }}
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+{{- end }}
+{{- if $gw.aws.enabled }}
+{{- $aws := $gw.aws }}
+{{- if $gw.create }}
+---
+# AWS Load Balancer Controller: the ALB behind the Gateway.
+apiVersion: gateway.k8s.aws/v1
+kind: LoadBalancerConfiguration
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "apigene.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  scheme: {{ $aws.scheme }}
+  {{- with $aws.loadBalancerName }}
+  loadBalancerName: {{ . | quote }}
+  {{- end }}
+  {{- with $aws.sourceRanges }}
+  sourceRanges:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $aws.subnets }}
+  loadBalancerSubnets:
+    {{- range . }}
+    - identifier: {{ . | quote }}
+    {{- end }}
+  {{- end }}
+  loadBalancerAttributes:
+    - key: idle_timeout.timeout_seconds
+      value: {{ $aws.idleTimeoutSeconds | quote }}
+    - key: routing.http.drop_invalid_header_fields.enabled
+      value: "true"
+    {{- range $aws.extraAttributes }}
+    - key: {{ .key | quote }}
+      value: {{ .value | toString | quote }}
+    {{- end }}
+  {{- with $aws.wafv2AclArn }}
+  wafV2:
+    webACL: {{ . | quote }}
+  {{- end }}
+  {{- with $aws.tags }}
+  tags:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if $gw.tls.enabled }}
+  listenerConfigurations:
+    - protocolPort: HTTPS:443
+      sslPolicy: {{ $aws.sslPolicy | quote }}
+      {{- with $aws.certificateArn }}
+      defaultCertificate: {{ . | quote }}
+      {{- end }}
+  {{- end }}
+{{- end }}
+---
+# Register the nginx pods as IP targets (the controller default is instance/NodePort).
+apiVersion: gateway.k8s.aws/v1
+kind: TargetGroupConfiguration
+metadata:
+  name: nginx
+  namespace: {{ $ns }}
+  labels:
+    {{- include "apigene.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nginx
+spec:
+  targetReference:
+    name: nginx
+  defaultConfiguration:
+    targetType: ip
+    protocol: HTTP
+    healthCheckConfig:
+      healthCheckPath: /nginx-health
+      healthCheckProtocol: HTTP
+      healthCheckInterval: 15
+      healthCheckTimeout: 5
+      healthyThresholdCount: 2
+      unhealthyThresholdCount: 3
+      matcher:
+        httpCode: "200"
+    targetGroupAttributes:
+      - key: deregistration_delay.timeout_seconds
+        value: "30"
+    {{- with $aws.tags }}
+    tags:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+{{- end }}
+{{- end }}

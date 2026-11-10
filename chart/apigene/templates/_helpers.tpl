@@ -137,6 +137,10 @@ Usage: include "apigene.appImage" (dict "root" . "name" "apigene-backend" "tag" 
 {{- regexReplaceAll ":[0-9]+$" $parsed.host "" -}}
 {{- end }}
 
+{{- define "apigene.gatewayHost" -}}
+{{- .Values.gateway.host | default (include "apigene.publicUrlHost" .) -}}
+{{- end }}
+
 {{- define "apigene.copilotHostAliases" -}}
 {{- if and .Values.copilot.internalPublicUrlHostAlias .Values.nginx.enabled -}}
 {{- $nginx := lookup "v1" "Service" (include "apigene.namespace" .) "nginx" -}}
@@ -223,8 +227,19 @@ redis
 {{- if and .Values.mongo.backup.enabled (not (include "apigene.bundledMongo" .)) }}
 {{- fail "mongo.backup works with the bundled MongoDB only; back up an external MongoDB with its own tooling" }}
 {{- end }}
-{{- if and .Values.ingress.enabled .Values.route.enabled }}
-{{- fail "enable either ingress or route, not both" }}
+{{- if and .Values.gateway.enabled .Values.route.enabled }}
+{{- fail "enable either gateway or route, not both" }}
+{{- end }}
+{{- if .Values.gateway.enabled }}
+{{- if and .Values.gateway.create (not .Values.gateway.className) }}
+{{- fail "gateway.className is required with gateway.create=true (e.g. alb for the AWS Load Balancer Controller, eg for Envoy Gateway)" }}
+{{- end }}
+{{- if and (not .Values.gateway.create) (not .Values.gateway.parentRefs) }}
+{{- fail "gateway.parentRefs is required with gateway.create=false (the Gateway listener to attach to)" }}
+{{- end }}
+{{- if regexMatch "^[0-9.]+$|^localhost$" (include "apigene.gatewayHost" .) }}
+{{- fail "gateway.host (or the publicUrl hostname) must be the DNS name users open, not an IP address or localhost" }}
+{{- end }}
 {{- end }}
 {{- end }}
 
@@ -349,7 +364,9 @@ securityContext:
 
 {{/*
 Pod template metadata: labels and annotations, with config/secret checksums so a
-changed secret or nginx config rolls the pods.
+changed secret or config rolls the pods that read it. MongoDB and nginx never roll on a
+secret change, and Redis only when its own password changes: Redis keeps queued Celery
+tasks in memory, so restarting it for an unrelated key (an LLM key, say) loses them.
 Usage: include "apigene.podMetadata" (dict "root" . "component" "backend" "values" .Values.backend)
 */}}
 {{- define "apigene.podMetadata" -}}
@@ -364,7 +381,12 @@ labels:
   {{- toYaml . | nindent 2 }}
   {{- end }}
 annotations:
+  {{- if has .component (list "backend" "backend-worker" "copilot" "mcp-gw") }}
   checksum/secret: {{ include (print $root.Template.BasePath "/secret.yaml") $root | sha256sum }}
+  {{- end }}
+  {{- if and (eq .component "redis") (include "apigene.redisAuthEnabled" $root) }}
+  checksum/redis-password: {{ $root.Values.redis.auth.password | toString | sha256sum }}
+  {{- end }}
   {{- if eq .component "nginx" }}
   checksum/config: {{ include (print $root.Template.BasePath "/configmap-nginx.yaml") $root | sha256sum }}
   {{- end }}
@@ -398,7 +420,14 @@ priorityClassName: {{ . }}
 {{- end }}
 securityContext:
   {{- mergeOverwrite (deepCopy $root.Values.podSecurityContext) (deepCopy ($v.podSecurityContext | default dict)) | toYaml | nindent 2 }}
-{{- with (mergeOverwrite (deepCopy ($root.Values.nodeSelector | default dict)) (deepCopy ($v.nodeSelector | default dict))) }}
+{{- /* Drop emptied keys: helm --reuse-values turns a "null" override into "". */}}
+{{- $nodeSelector := dict }}
+{{- range $k, $val := (mergeOverwrite (deepCopy ($root.Values.nodeSelector | default dict)) (deepCopy ($v.nodeSelector | default dict))) }}
+{{- if $val }}
+{{- $_ := set $nodeSelector $k $val }}
+{{- end }}
+{{- end }}
+{{- with $nodeSelector }}
 nodeSelector:
   {{- toYaml . | nindent 2 }}
 {{- end }}

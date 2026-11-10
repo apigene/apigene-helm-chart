@@ -36,7 +36,7 @@ data:
         server_tokens off;
 
         {{- if .Values.nginx.trustForwardedProto }}
-        # TLS usually ends at the ALB / ingress in front of nginx; keep its scheme.
+        # TLS usually ends at the Gateway / ALB in front of nginx; keep its scheme.
         map $http_x_forwarded_proto $apigene_forwarded_proto {
             default $http_x_forwarded_proto;
             ""      $scheme;
@@ -131,7 +131,9 @@ data:
             }
             {{- end }}
 
-            {{- if .Values.mcpGw.enabled }}
+            {{- /* mcp-gw and copilot run only with the backend; nginx exits on an
+                   upstream host it cannot resolve. */}}
+            {{- if and .Values.backend.enabled .Values.mcpGw.enabled }}
 
             location ~ ^/([^/]+)/([^/]+)/mcp/?$ {
                 proxy_pass http://mcp-gw:8001;
@@ -164,7 +166,7 @@ data:
             }
             {{- end }}
 
-            {{- if .Values.copilot.enabled }}
+            {{- if and .Values.backend.enabled .Values.copilot.enabled }}
 
             location / {
                 proxy_pass http://copilot:3000;

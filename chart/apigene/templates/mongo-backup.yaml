@@ -70,6 +70,8 @@ spec:
                 - |
                   set -euo pipefail
                   file="/backup/apigene-$(date -u +%Y%m%dT%H%M%SZ).archive.gz"
+                  # A failed dump must not leave a partial archive behind.
+                  trap 'rm -f "${file}.partial"' EXIT
                   mongodump --uri="${MONGO_DB_URL}" --archive="${file}.partial" --gzip
                   mv "${file}.partial" "${file}"
                   find /backup -name 'apigene-*.archive.gz' -mtime +"${RETENTION_DAYS}" -delete
