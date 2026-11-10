@@ -1,4 +1,5 @@
 {{- if .Values.nginx.enabled }}
+{{- $ctx := dict "root" . "component" "nginx" "values" .Values.nginx }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -31,35 +32,37 @@ metadata:
     app.kubernetes.io/component: nginx
 spec:
   replicas: {{ .Values.nginx.replicas }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
   selector:
     matchLabels:
       app.kubernetes.io/component: nginx
       {{- include "apigene.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      labels:
-        app.kubernetes.io/component: nginx
-        {{- include "apigene.selectorLabels" . | nindent 8 }}
+      {{- include "apigene.podMetadata" $ctx | nindent 6 }}
     spec:
-      {{- include "apigene.imagePullSecrets" . | nindent 6 }}
-      {{- include "apigene.nodeScheduling" . | nindent 6 }}
+      {{- include "apigene.podSpecCommon" $ctx | nindent 6 }}
+      {{- if .Values.backend.enabled }}
       initContainers:
-        {{- if .Values.backend.enabled }}
         {{- include "apigene.waitForBackendInit" . | nindent 8 }}
-        {{- end }}
+      {{- end }}
       containers:
         - name: nginx
           image: {{ include "apigene.nginxImage" . | quote }}
-          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          imagePullPolicy: {{ include "apigene.pullPolicy" . }}
           command: ["nginx", "-g", "daemon off;"]
           ports:
             - name: http
               containerPort: 8080
+          securityContext:
+            {{- include "apigene.containerSecurityContext" $ctx | nindent 12 }}
           volumeMounts:
             - name: nginx-config
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
           readinessProbe:
             httpGet:
               path: /nginx-health
@@ -74,6 +77,11 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 3
+          lifecycle:
+            # Let the load balancer deregister the pod before nginx stops.
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 10"]
           {{- with .Values.nginx.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -82,4 +90,6 @@ spec:
         - name: nginx-config
           configMap:
             name: nginx-config
+        - name: tmp
+          emptyDir: {}
 {{- end }}

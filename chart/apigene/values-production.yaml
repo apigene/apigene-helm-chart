@@ -1,11 +1,21 @@
-# Production-oriented overrides.
+# Production-oriented overrides for any Kubernetes cluster.
+# On Amazon EKS, layer values-aws.yaml on top of this file.
+#
 # Usage:
-#   helm install apigene ./chart/apigene -f chart/apigene/values-production.yaml \
+#   helm install apigene ./chart/apigene -n apigene --create-namespace \
+#     -f chart/apigene/values-production.yaml \
 #     --set publicUrl=https://apigene.example.com \
-#     --set auth.secretKey="$APIGENE_AUTH_SECRET"
+#     --set ingress.host=apigene.example.com \
+#     --set auth.secretKey="$APIGENE_AUTH_SECRET" \
+#     --set mongo.auth.password="$APIGENE_MONGO_PASSWORD" \
+#     --set redis.auth.password="$APIGENE_REDIS_PASSWORD"
+#
+# Better: keep the secrets in a Kubernetes Secret (for example synced from AWS Secrets
+# Manager by External Secrets Operator) and set auth.existingSecret.
 
-mongo:
-  storage: 20Gi
+databaseEnv: production
+logging:
+  env: production
 
 service:
   type: ClusterIP
@@ -21,43 +31,12 @@ ingress:
   tls:
     enabled: true
 
-backend:
-  resources:
-    requests:
-      cpu: 500m
-      memory: 1Gi
-    limits:
-      cpu: "2"
-      memory: 4Gi
-
-backendWorker:
-  resources:
-    requests:
-      cpu: 250m
-      memory: 512Mi
-    limits:
-      cpu: "1"
-      memory: 2Gi
-
-copilot:
-  resources:
-    requests:
-      cpu: 250m
-      memory: 512Mi
-    limits:
-      cpu: "1"
-      memory: 2Gi
-
-nginx:
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-
 mongo:
+  storage: 20Gi
+  auth:
+    enabled: true
+  backup:
+    enabled: true
   resources:
     requests:
       cpu: 250m
@@ -67,6 +46,59 @@ mongo:
       memory: 2Gi
 
 redis:
+  auth:
+    enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+backend:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
+backendWorker:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+
+copilot:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+
+mcpGw:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+nginx:
+  replicas: 2
+  exposeApiDocs: false
   resources:
     requests:
       cpu: 100m

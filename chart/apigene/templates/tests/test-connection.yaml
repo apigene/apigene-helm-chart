@@ -1,0 +1,37 @@
+{{- if .Values.nginx.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "apigene.fullname" . }}-test-connection
+  namespace: {{ include "apigene.namespace" . }}
+  labels:
+    {{- include "apigene.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  serviceAccountName: {{ include "apigene.serviceAccountName" . }}
+  automountServiceAccountToken: false
+  securityContext:
+    {{- toYaml .Values.podSecurityContext | nindent 4 }}
+  {{- with .Values.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  containers:
+    - name: test
+      {{- include "apigene.initContainerCommon" . | nindent 6 }}
+      command:
+        - sh
+        - -c
+        - |
+          set -e
+          base="http://nginx:{{ .Values.service.port }}"
+          wget -q -O - "${base}/nginx-health" | grep -q ok
+          {{- if .Values.backend.enabled }}
+          wget -q -O - "${base}/api/health" | grep -q ok
+          {{- end }}
+          echo "Apigene is reachable through nginx."
+{{- end }}

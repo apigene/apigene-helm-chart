@@ -14,9 +14,20 @@ Apigene is starting. Pods may take 2–3 minutes to become ready.
 
 {{- if .Values.ingress.enabled }}
 
-  https://{{ .Values.ingress.host }}
+  {{ if .Values.ingress.tls.enabled }}https{{ else }}http{{ end }}://{{ .Values.ingress.host }}
+{{- if eq .Values.ingress.className "alb" }}
+
+  The AWS Load Balancer Controller provisions the ALB. Point DNS at its hostname:
+
+  kubectl get ingress nginx -n {{ include "apigene.namespace" . }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+{{- else }}
 
   Ensure DNS points to your ingress controller and TLS is configured.
+{{- end }}
+
+{{- else if .Values.route.enabled }}
+
+  oc get route nginx -n {{ include "apigene.namespace" . }}
 
 {{- else if eq .Values.service.type "LoadBalancer" }}
 
@@ -37,17 +48,42 @@ Apigene is starting. Pods may take 2–3 minutes to become ready.
 
 {{- end }}
 
-3. Run tests (with port-forward or once the URL is reachable):
+3. Check the install:
 
+  helm test {{ .Release.Name }} -n {{ include "apigene.namespace" . }}
+
+  Full suite (with port-forward or once the URL is reachable):
   ./scripts/run-tests.sh --port-forward
 
-  Or smoke only: BASE_URL={{ include "apigene.publicUrl" . }} ./scripts/smoke.sh
+4. MCP clients: {{ include "apigene.publicUrl" . }}/agent/<agent-name>/mcp
+{{- $warnings := list }}
+{{- if eq (include "apigene.imageTag" .) "latest" }}
+{{- $warnings = append $warnings "imageTag is \"latest\": nodes can run different versions. Pin a release tag." }}
+{{- end }}
+{{- if and (include "apigene.bundledMongo" .) (not .Values.mongo.auth.enabled) }}
+{{- $warnings = append $warnings "MongoDB runs without authentication. Set mongo.auth.enabled=true and mongo.auth.password." }}
+{{- end }}
+{{- if and (include "apigene.bundledMongo" .) (not .Values.mongo.backup.enabled) }}
+{{- $warnings = append $warnings "MongoDB has no backups. Enable mongo.backup or use a managed MongoDB (externalMongo)." }}
+{{- end }}
+{{- if and (include "apigene.bundledRedis" .) (not .Values.redis.auth.enabled) }}
+{{- $warnings = append $warnings "Redis runs without a password. Set redis.auth.enabled=true and redis.auth.password." }}
+{{- end }}
+{{- if eq .Values.service.type "LoadBalancer" }}
+{{- $warnings = append $warnings "service.type=LoadBalancer serves plain HTTP. Prefer ingress with TLS." }}
+{{- end }}
+{{- if not (hasPrefix "https://" (include "apigene.publicUrl" .)) }}
+{{- $warnings = append $warnings "publicUrl is not https. Set it to the URL users open in the browser." }}
+{{- end }}
+{{- if .Values.nginx.exposeApiDocs }}
+{{- $warnings = append $warnings "/docs, /redoc and /openapi.json are public. Set nginx.exposeApiDocs=false for customer-facing installs." }}
+{{- end }}
+{{- if $warnings }}
 
-4. Production reminders:
-
-  - Set publicUrl to the browser-facing URL (must match what users open).
-  - auth.secretKey is required; generate with: openssl rand -hex 32
-  - OnPrem: set deploymentType=OnPrem; set license.publicKey to accept pasted licenses
-  - MCP clients: {{ include "apigene.publicUrl" . }}/agent/<agent-name>/mcp
+Production checklist — action needed:
+{{- range $warnings }}
+  - {{ . }}
+{{- end }}
+{{- end }}
 
 Docs: https://docs.apigene.ai/

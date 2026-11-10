@@ -28,10 +28,12 @@ Create a default fully qualified app name.
 {{- define "apigene.labels" -}}
 helm.sh/chart: {{ include "apigene.chart" . }}
 {{ include "apigene.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-{{- end }}
+app.kubernetes.io/version: {{ include "apigene.imageTag" . | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/part-of: apigene
+{{- with .Values.commonLabels }}
+{{ toYaml . }}
+{{- end }}
 {{- end }}
 
 {{- define "apigene.selectorLabels" -}}
@@ -39,12 +41,33 @@ app.kubernetes.io/name: {{ include "apigene.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
+{{/*
+Every resource goes to namespace.name, or the release namespace when it is empty.
+*/}}
 {{- define "apigene.namespace" -}}
-{{- .Values.namespace.name }}
+{{- .Values.namespace.name | default .Release.Namespace }}
+{{- end }}
+
+{{- define "apigene.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create }}
+{{- .Values.serviceAccount.name | default (include "apigene.fullname" .) }}
+{{- else }}
+{{- .Values.serviceAccount.name | default "default" }}
+{{- end }}
 {{- end }}
 
 {{- define "apigene.imageTag" -}}
 {{- .Values.imageTag | default .Chart.AppVersion }}
+{{- end }}
+
+{{- define "apigene.pullPolicy" -}}
+{{- if .Values.images.pullPolicy }}
+{{- .Values.images.pullPolicy }}
+{{- else if eq (include "apigene.imageTag" .) "latest" }}
+{{- "Always" }}
+{{- else }}
+{{- "IfNotPresent" }}
+{{- end }}
 {{- end }}
 
 {{- define "apigene.registry" -}}
@@ -53,7 +76,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{/*
 Third-party image reference. With images.mirror set, the image comes from the
-mirror under its short name, such as <mirror>/mongo:7.
+mirror under its short name, such as <mirror>/mongo:7.0.45.
 Usage: include "apigene.thirdPartyImage" (dict "image" .Values.mongo.image "root" .)
 */}}
 {{- define "apigene.thirdPartyImage" -}}
@@ -64,28 +87,33 @@ Usage: include "apigene.thirdPartyImage" (dict "image" .Values.mongo.image "root
 {{- printf "%s:%s" $repository .image.tag }}
 {{- end }}
 
+{{/*
+Apigene image reference. A digest wins over the tag.
+Usage: include "apigene.appImage" (dict "root" . "name" "apigene-backend" "tag" .Values.images.backendTag "digest" .Values.images.digests.backend)
+*/}}
+{{- define "apigene.appImage" -}}
+{{- $registry := include "apigene.registry" .root -}}
+{{- if .digest -}}
+{{- printf "%s/%s@%s" $registry .name .digest }}
+{{- else -}}
+{{- printf "%s/%s:%s" $registry .name (.tag | default (include "apigene.imageTag" .root)) }}
+{{- end -}}
+{{- end }}
+
 {{- define "apigene.backendImage" -}}
-{{- $registry := include "apigene.registry" . -}}
-{{- $tag := .Values.images.backendTag | default (include "apigene.imageTag" .) -}}
-{{- printf "%s/apigene-backend:%s" $registry $tag }}
+{{- include "apigene.appImage" (dict "root" . "name" "apigene-backend" "tag" .Values.images.backendTag "digest" ((.Values.images.digests).backend)) }}
 {{- end }}
 
 {{- define "apigene.copilotImage" -}}
-{{- $registry := include "apigene.registry" . -}}
-{{- $tag := .Values.images.copilotTag | default (include "apigene.imageTag" .) -}}
-{{- printf "%s/apigene-copilot:%s" $registry $tag }}
+{{- include "apigene.appImage" (dict "root" . "name" "apigene-copilot" "tag" .Values.images.copilotTag "digest" ((.Values.images.digests).copilot)) }}
 {{- end }}
 
 {{- define "apigene.mcpGwImage" -}}
-{{- $registry := include "apigene.registry" . -}}
-{{- $tag := .Values.images.mcpGwTag | default (include "apigene.imageTag" .) -}}
-{{- printf "%s/apigene-mcp-gw:%s" $registry $tag }}
+{{- include "apigene.appImage" (dict "root" . "name" "apigene-mcp-gw" "tag" .Values.images.mcpGwTag "digest" ((.Values.images.digests).mcpGw)) }}
 {{- end }}
 
 {{- define "apigene.nginxImage" -}}
-{{- $registry := include "apigene.registry" . -}}
-{{- $tag := .Values.images.nginxTag | default (include "apigene.imageTag" .) -}}
-{{- printf "%s/apigene-nginx:%s" $registry $tag }}
+{{- include "apigene.appImage" (dict "root" . "name" "apigene-nginx" "tag" .Values.images.nginxTag "digest" ((.Values.images.digests).nginx)) }}
 {{- end }}
 
 {{- define "apigene.publicUrl" -}}
@@ -122,11 +150,33 @@ hostAliases:
 {{- end -}}
 {{- end }}
 
+{{- define "apigene.bundledMongo" -}}
+{{- if and .Values.mongo.enabled (not .Values.externalMongo.enabled) -}}
+true
+{{- end -}}
+{{- end }}
+
+{{- define "apigene.bundledRedis" -}}
+{{- if and .Values.redis.enabled (not .Values.externalRedis.enabled) -}}
+true
+{{- end -}}
+{{- end }}
+
 {{- define "apigene.mongoUrl" -}}
 {{- if .Values.externalMongo.enabled -}}
-{{- required "externalMongo.url is required when externalMongo.enabled=true" .Values.externalMongo.url -}}
+{{- .Values.externalMongo.url -}}
 {{- else -}}
 mongodb://mongo:27017/?directConnection=true
+{{- end -}}
+{{- end }}
+
+{{/*
+MONGO_DB_URL comes from the secret when it carries credentials: bundled MongoDB with
+auth, or an external URL (chart secret, or the user's existingSecret).
+*/}}
+{{- define "apigene.mongoUrlInSecret" -}}
+{{- if or (include "apigene.mongoAuthEnabled" .) .Values.externalMongo.enabled -}}
+true
 {{- end -}}
 {{- end }}
 
@@ -138,6 +188,14 @@ redis
 {{- end -}}
 {{- end }}
 
+{{- define "apigene.redisPort" -}}
+{{- if .Values.externalRedis.enabled -}}
+{{- .Values.externalRedis.port | default 6379 -}}
+{{- else -}}
+{{- .Values.redis.port | default 6379 -}}
+{{- end -}}
+{{- end }}
+
 {{- define "apigene.secretName" -}}
 {{- if .Values.auth.existingSecret }}
 {{- .Values.auth.existingSecret }}
@@ -146,7 +204,7 @@ redis
 {{- end }}
 {{- end }}
 
-{{- define "apigene.validateAuth" -}}
+{{- define "apigene.validate" -}}
 {{- if and (not .Values.auth.existingSecret) (not .Values.auth.secretKey) }}
 {{- fail "auth.secretKey is required. Generate one with: openssl rand -hex 32" }}
 {{- end }}
@@ -159,30 +217,38 @@ redis
 {{- if and (eq .Values.auth.provider "keycloak") (not .Values.auth.existingSecret) (not .Values.auth.keycloak.issuer) }}
 {{- fail "auth.keycloak.issuer is required when auth.provider=keycloak" }}
 {{- end }}
+{{- if and .Values.externalMongo.enabled (not .Values.auth.existingSecret) (not .Values.externalMongo.url) }}
+{{- fail "externalMongo.url is required when externalMongo.enabled=true (or put MONGO_DB_URL in auth.existingSecret)" }}
+{{- end }}
+{{- if and .Values.mongo.backup.enabled (not (include "apigene.bundledMongo" .)) }}
+{{- fail "mongo.backup works with the bundled MongoDB only; back up an external MongoDB with its own tooling" }}
+{{- end }}
+{{- if and .Values.ingress.enabled .Values.route.enabled }}
+{{- fail "enable either ingress or route, not both" }}
+{{- end }}
 {{- end }}
 
 {{- define "apigene.mongoAuthEnabled" -}}
-{{- if and .Values.mongo.enabled .Values.mongo.auth.enabled (not .Values.externalMongo.enabled) -}}
+{{- if and (include "apigene.bundledMongo" .) .Values.mongo.auth.enabled -}}
 true
 {{- end -}}
 {{- end }}
 
 {{- define "apigene.redisAuthEnabled" -}}
-{{- if and .Values.redis.enabled .Values.redis.auth.enabled (not .Values.externalRedis.enabled) -}}
+{{- if and (include "apigene.bundledRedis" .) .Values.redis.auth.enabled -}}
 true
 {{- end -}}
 {{- end }}
 
 {{- define "apigene.commonEnv" -}}
-{{- /* With MongoDB auth the URL holds a password, so it comes from the secret. */ -}}
-{{- if not (include "apigene.mongoAuthEnabled" .) }}
+{{- if not (include "apigene.mongoUrlInSecret" .) }}
 - name: MONGO_DB_URL
   value: {{ include "apigene.mongoUrl" . | quote }}
 {{- end }}
 - name: REDIS_HOST
   value: {{ include "apigene.redisHost" . | quote }}
 - name: REDIS_PORT
-  value: {{ .Values.redis.port | default .Values.externalRedis.port | quote }}
+  value: {{ include "apigene.redisPort" . | quote }}
 - name: REDIS_CACHE_DB
   value: "1"
 - name: TENANT_NAME
@@ -194,7 +260,7 @@ true
 - name: DATABASE_ENV
   value: {{ .Values.databaseEnv | quote }}
 - name: UVICORN_WORKERS
-  value: "1"
+  value: {{ .Values.backend.uvicornWorkers | default 1 | quote }}
 - name: NEXT_PUBLIC_SERVER_BASE_URL
   value: {{ include "apigene.publicUrl" . | quote }}
 - name: ALLOWED_ORIGINS
@@ -219,13 +285,29 @@ true
 - name: NEXT_PUBLIC_KEYCLOAK_REDIRECT_URI
   value: {{ $.Values.auth.keycloak.redirectUri | default (printf "%s/client-api/auth/keycloak/callback" (include "apigene.publicUrl" $)) | quote }}
 {{- end }}
+{{- with .Values.extraEnv }}
+{{ toYaml . }}
+{{- end }}
+{{- end }}
+
+{{/*
+Init containers. Usage: include "apigene.waitForMongoInit" (dict "root" . "component" "backend")
+*/}}
+{{- define "apigene.initContainerCommon" -}}
+image: {{ include "apigene.thirdPartyImage" (dict "image" .Values.initImage "root" .) | quote }}
+imagePullPolicy: {{ .Values.initImage.pullPolicy }}
+{{- with .Values.initImage.resources }}
+resources:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+securityContext:
+  {{- mergeOverwrite (deepCopy .Values.containerSecurityContext) (deepCopy (.Values.initImage.securityContext | default dict)) | toYaml | nindent 2 }}
 {{- end }}
 
 {{- define "apigene.waitForMongoInit" -}}
-{{- if and .Values.mongo.enabled (not .Values.externalMongo.enabled) }}
+{{- if include "apigene.bundledMongo" . }}
 - name: wait-for-mongo
-  image: {{ include "apigene.thirdPartyImage" (dict "image" .Values.initImage "root" .) | quote }}
-  imagePullPolicy: {{ .Values.initImage.pullPolicy }}
+  {{- include "apigene.initContainerCommon" . | nindent 2 }}
   command:
     - sh
     - -c
@@ -238,10 +320,9 @@ true
 {{- end }}
 
 {{- define "apigene.waitForRedisInit" -}}
-{{- if and .Values.redis.enabled (not .Values.externalRedis.enabled) }}
+{{- if include "apigene.bundledRedis" . }}
 - name: wait-for-redis
-  image: {{ include "apigene.thirdPartyImage" (dict "image" .Values.initImage "root" .) | quote }}
-  imagePullPolicy: {{ .Values.initImage.pullPolicy }}
+  {{- include "apigene.initContainerCommon" . | nindent 2 }}
   command:
     - sh
     - -c
@@ -255,8 +336,7 @@ true
 
 {{- define "apigene.waitForBackendInit" -}}
 - name: wait-for-backend
-  image: {{ include "apigene.thirdPartyImage" (dict "image" .Values.initImage "root" .) | quote }}
-  imagePullPolicy: {{ .Values.initImage.pullPolicy }}
+  {{- include "apigene.initContainerCommon" . | nindent 2 }}
   command:
     - sh
     - -c
@@ -267,24 +347,103 @@ true
       done
 {{- end }}
 
-{{- define "apigene.imagePullSecrets" -}}
-{{- with .Values.images.pullSecrets }}
+{{/*
+Pod template metadata: labels and annotations, with config/secret checksums so a
+changed secret or nginx config rolls the pods.
+Usage: include "apigene.podMetadata" (dict "root" . "component" "backend" "values" .Values.backend)
+*/}}
+{{- define "apigene.podMetadata" -}}
+{{- $root := .root -}}
+labels:
+  app.kubernetes.io/component: {{ .component }}
+  {{- include "apigene.selectorLabels" $root | nindent 2 }}
+  {{- with $root.Values.podLabels }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}
+  {{- with .values.podLabels }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}
+annotations:
+  checksum/secret: {{ include (print $root.Template.BasePath "/secret.yaml") $root | sha256sum }}
+  {{- if eq .component "nginx" }}
+  checksum/config: {{ include (print $root.Template.BasePath "/configmap-nginx.yaml") $root | sha256sum }}
+  {{- end }}
+  {{- if eq .component "mongo" }}
+  checksum/config: {{ include (print $root.Template.BasePath "/configmap-mongo.yaml") $root | sha256sum }}
+  {{- end }}
+  {{- with $root.Values.podAnnotations }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}
+  {{- with .values.podAnnotations }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}
+{{- end }}
+
+{{/*
+Pod-level spec shared by every workload: service account, pull secrets, security
+context, scheduling. Component values win over the global ones.
+Usage: include "apigene.podSpecCommon" (dict "root" . "component" "backend" "values" .Values.backend)
+*/}}
+{{- define "apigene.podSpecCommon" -}}
+{{- $root := .root -}}
+{{- $v := .values -}}
+serviceAccountName: {{ include "apigene.serviceAccountName" $root }}
+automountServiceAccountToken: {{ $root.Values.serviceAccount.automountToken }}
+{{- with $root.Values.images.pullSecrets }}
 imagePullSecrets:
   {{- toYaml . | nindent 2 }}
 {{- end }}
+{{- with ($v.priorityClassName | default $root.Values.priorityClassName) }}
+priorityClassName: {{ . }}
 {{- end }}
-
-{{- define "apigene.nodeScheduling" -}}
-{{- with .Values.nodeSelector }}
+securityContext:
+  {{- mergeOverwrite (deepCopy $root.Values.podSecurityContext) (deepCopy ($v.podSecurityContext | default dict)) | toYaml | nindent 2 }}
+{{- with (mergeOverwrite (deepCopy ($root.Values.nodeSelector | default dict)) (deepCopy ($v.nodeSelector | default dict))) }}
 nodeSelector:
   {{- toYaml . | nindent 2 }}
 {{- end }}
-{{- with .Values.tolerations }}
+{{- with ($v.tolerations | default $root.Values.tolerations) }}
 tolerations:
   {{- toYaml . | nindent 2 }}
 {{- end }}
-{{- with .Values.affinity }}
+{{- with ($v.affinity | default $root.Values.affinity) }}
 affinity:
   {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- if $v.topologySpreadConstraints }}
+topologySpreadConstraints:
+  {{- toYaml $v.topologySpreadConstraints | nindent 2 }}
+{{- else if $root.Values.topologySpread.enabled }}
+topologySpreadConstraints:
+  {{- range list "topology.kubernetes.io/zone" "kubernetes.io/hostname" }}
+  - maxSkew: 1
+    topologyKey: {{ . }}
+    whenUnsatisfiable: {{ $root.Values.topologySpread.whenUnsatisfiable }}
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/component: {{ $.component }}
+        {{- include "apigene.selectorLabels" $root | nindent 8 }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Container security context. Usage: include "apigene.containerSecurityContext" (dict "root" . "values" .Values.backend)
+*/}}
+{{- define "apigene.containerSecurityContext" -}}
+{{- mergeOverwrite (deepCopy .root.Values.containerSecurityContext) (deepCopy (.values.securityContext | default dict)) | toYaml }}
+{{- end }}
+
+{{/*
+Environment for the Apigene app containers.
+Usage: include "apigene.appEnv" (dict "root" . "values" .Values.backend)
+*/}}
+{{- define "apigene.appEnv" -}}
+{{- include "apigene.commonEnv" .root }}
+{{- /* Images run as an arbitrary non-root UID, whose home is not writable. */}}
+- name: HOME
+  value: /tmp
+{{- with .values.extraEnv }}
+{{ toYaml . }}
 {{- end }}
 {{- end }}

@@ -1,4 +1,51 @@
 {{- if and .Values.ingress.enabled .Values.nginx.enabled }}
+{{- $isAlb := eq .Values.ingress.className "alb" }}
+{{- $annotations := dict }}
+{{- if $isAlb }}
+{{- $alb := .Values.ingress.alb }}
+{{- $lbAttrs := concat (list (printf "idle_timeout.timeout_seconds=%v" $alb.idleTimeoutSeconds) "routing.http.drop_invalid_header_fields.enabled=true") ($alb.extraAttributes | default list) }}
+{{- $_ := set $annotations "alb.ingress.kubernetes.io/scheme" $alb.scheme }}
+{{- $_ := set $annotations "alb.ingress.kubernetes.io/target-type" "ip" }}
+{{- $_ := set $annotations "alb.ingress.kubernetes.io/backend-protocol" "HTTP" }}
+{{- $_ := set $annotations "alb.ingress.kubernetes.io/healthcheck-path" "/nginx-health" }}
+{{- $_ := set $annotations "alb.ingress.kubernetes.io/success-codes" "200" }}
+{{- $_ := set $annotations "alb.ingress.kubernetes.io/load-balancer-attributes" (join "," $lbAttrs) }}
+{{- $_ := set $annotations "alb.ingress.kubernetes.io/target-group-attributes" "deregistration_delay.timeout_seconds=30" }}
+{{- if .Values.ingress.tls.enabled }}
+{{- $_ := set $annotations "alb.ingress.kubernetes.io/listen-ports" "[{\"HTTP\":80},{\"HTTPS\":443}]" }}
+{{- $_ := set $annotations "alb.ingress.kubernetes.io/ssl-redirect" "443" }}
+{{- $_ := set $annotations "alb.ingress.kubernetes.io/ssl-policy" $alb.sslPolicy }}
+{{- with $alb.certificateArn }}
+{{- $_ := set $annotations "alb.ingress.kubernetes.io/certificate-arn" . }}
+{{- end }}
+{{- else }}
+{{- $_ := set $annotations "alb.ingress.kubernetes.io/listen-ports" "[{\"HTTP\":80}]" }}
+{{- end }}
+{{- with $alb.groupName }}
+{{- $_ := set $annotations "alb.ingress.kubernetes.io/group.name" . }}
+{{- end }}
+{{- with $alb.inboundCidrs }}
+{{- $_ := set $annotations "alb.ingress.kubernetes.io/inbound-cidrs" (join "," .) }}
+{{- end }}
+{{- with $alb.wafv2AclArn }}
+{{- $_ := set $annotations "alb.ingress.kubernetes.io/wafv2-acl-arn" . }}
+{{- end }}
+{{- with $alb.tags }}
+{{- $tags := list }}
+{{- range $k, $v := . }}
+{{- $tags = append $tags (printf "%s=%s" $k $v) }}
+{{- end }}
+{{- $_ := set $annotations "alb.ingress.kubernetes.io/tags" (join "," $tags) }}
+{{- end }}
+{{- end }}
+{{- /* A null value removes an annotation, e.g. one set by another values file. */}}
+{{- range $k, $v := (.Values.ingress.annotations | default dict) }}
+{{- if kindIs "invalid" $v }}
+{{- $_ := unset $annotations $k }}
+{{- else }}
+{{- $_ := set $annotations $k $v }}
+{{- end }}
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -7,7 +54,7 @@ metadata:
   labels:
     {{- include "apigene.labels" . | nindent 4 }}
     app.kubernetes.io/component: nginx
-  {{- with .Values.ingress.annotations }}
+  {{- with $annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
@@ -19,7 +66,9 @@ spec:
   tls:
     - hosts:
         - {{ .Values.ingress.host | quote }}
+      {{- if not $isAlb }}
       secretName: {{ .Values.ingress.tls.secretName | default (printf "%s-tls" (include "apigene.fullname" .)) }}
+      {{- end }}
   {{- end }}
   rules:
     - host: {{ .Values.ingress.host | quote }}

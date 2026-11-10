@@ -1,0 +1,29 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- $components := list
+  (dict "name" "backend" "values" .Values.backend "enabled" .Values.backend.enabled)
+  (dict "name" "backend-worker" "values" .Values.backendWorker "enabled" (and .Values.backend.enabled .Values.backendWorker.enabled))
+  (dict "name" "copilot" "values" .Values.copilot "enabled" (and .Values.backend.enabled .Values.copilot.enabled))
+  (dict "name" "mcp-gw" "values" .Values.mcpGw "enabled" (and .Values.backend.enabled .Values.mcpGw.enabled))
+  (dict "name" "nginx" "values" .Values.nginx "enabled" .Values.nginx.enabled)
+}}
+{{- range $components }}
+{{- /* A PDB on a single replica would block every node drain. */}}
+{{- if and .enabled (gt (int .values.replicas) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .name }}
+  namespace: {{ include "apigene.namespace" $ }}
+  labels:
+    {{- include "apigene.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ .name }}
+spec:
+  maxUnavailable: {{ $.Values.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: {{ .name }}
+      {{- include "apigene.selectorLabels" $ | nindent 6 }}
+{{- end }}
+{{- end }}
+{{- end }}

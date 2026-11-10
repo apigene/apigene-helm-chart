@@ -1,0 +1,56 @@
+# Amazon EKS overrides: ALB from the AWS Load Balancer Controller in front of the
+# in-cluster nginx router. Layer on top of values-production.yaml:
+#
+#   helm install apigene ./chart/apigene -n apigene --create-namespace \
+#     -f chart/apigene/values-production.yaml \
+#     -f chart/apigene/values-aws.yaml \
+#     --set publicUrl=https://apigene.example.com \
+#     --set ingress.host=apigene.example.com \
+#     --set ingress.alb.certificateArn=arn:aws:acm:<region>:<account>:certificate/<id> \
+#     --set auth.existingSecret=apigene-env
+#
+# Requirements:
+#   - AWS Load Balancer Controller v2.4+ (terraform/modules/aws-load-balancer-controller)
+#   - An ACM certificate for ingress.host (or leave certificateArn empty for discovery)
+#   - The EBS CSI driver and a gp3 StorageClass for the MongoDB volume
+#
+# Why not API Gateway in front: its integrations time out after 29s (15 min with REST
+# response streaming), while MCP streams stay open for up to an hour.
+
+ingress:
+  enabled: true
+  className: alb
+  # Drop the ingress-nginx / cert-manager annotations from values-production.yaml.
+  annotations:
+    cert-manager.io/cluster-issuer: null
+    nginx.ingress.kubernetes.io/proxy-body-size: null
+    nginx.ingress.kubernetes.io/proxy-read-timeout: null
+    nginx.ingress.kubernetes.io/proxy-send-timeout: null
+  tls:
+    enabled: true
+  alb:
+    scheme: internet-facing
+    certificateArn: ""
+    idleTimeoutSeconds: 3600
+    # inboundCidrs: ["203.0.113.0/24"]
+    # wafv2AclArn: arn:aws:wafv2:<region>:<account>:regional/webacl/<name>/<id>
+    # extraAttributes:
+    #   - deletion_protection.enabled=true
+    #   - access_logs.s3.enabled=true
+    #   - access_logs.s3.bucket=<bucket>
+
+mongo:
+  storageClass: gp3
+
+# IRSA or EKS Pod Identity for the apps (Bedrock, S3, Secrets Manager…).
+# serviceAccount:
+#   annotations:
+#     eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/apigene
+
+# Requires network policy enforcement in the VPC CNI add-on
+# (configuration_values = {"enableNetworkPolicy": "true"}).
+networkPolicy:
+  enabled: true
+  # ALB IP targets: traffic comes from the ALB's addresses inside the VPC.
+  ingressCidrs:
+    - 10.0.0.0/16

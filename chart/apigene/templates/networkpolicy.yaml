@@ -1,6 +1,6 @@
 {{- if .Values.networkPolicy.enabled }}
-{{- if not .Values.networkPolicy.ingressNamespaceLabels }}
-{{- fail "networkPolicy.ingressNamespaceLabels is required when networkPolicy.enabled=true" }}
+{{- if not (or .Values.networkPolicy.ingressNamespaceLabels .Values.networkPolicy.ingressCidrs) }}
+{{- fail "networkPolicy needs ingressNamespaceLabels (ingress controller namespace) or ingressCidrs (e.g. the VPC CIDR for an ALB)" }}
 {{- end }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -33,9 +33,15 @@ spec:
     - Ingress
   ingress:
     - from:
+        {{- with .Values.networkPolicy.ingressNamespaceLabels }}
         - namespaceSelector:
             matchLabels:
-              {{- toYaml .Values.networkPolicy.ingressNamespaceLabels | nindent 14 }}
+              {{- toYaml . | nindent 14 }}
+        {{- end }}
+        {{- range .Values.networkPolicy.ingressCidrs }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
       ports:
         - protocol: TCP
           port: 8080

@@ -1,4 +1,4 @@
-{{- if and .Values.mongo.enabled (not .Values.externalMongo.enabled) }}
+{{- if include "apigene.bundledMongo" . }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -11,12 +11,13 @@ data:
   mongod.conf: |
     storage:
       dbPath: /data/db
+    # Log to stdout so kubectl logs and the cluster log pipeline see MongoDB.
     systemLog:
-      destination: file
-      path: /dev/null
       quiet: true
     net:
       bindIpAll: true
+      unixDomainSocket:
+        pathPrefix: /tmp
     {{- if include "apigene.mongoAuthEnabled" . }}
     security:
       authorization: enabled

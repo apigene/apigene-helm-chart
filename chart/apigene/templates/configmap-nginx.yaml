@@ -33,6 +33,20 @@ data:
         proxy_busy_buffers_size 32k;
         large_client_header_buffers 4 16k;
 
+        server_tokens off;
+
+        {{- if .Values.nginx.trustForwardedProto }}
+        # TLS usually ends at the ALB / ingress in front of nginx; keep its scheme.
+        map $http_x_forwarded_proto $apigene_forwarded_proto {
+            default $http_x_forwarded_proto;
+            ""      $scheme;
+        }
+        {{- else }}
+        map $scheme $apigene_forwarded_proto {
+            default $scheme;
+        }
+        {{- end }}
+
         server {
             listen 8080;
             client_max_body_size 15M;
@@ -58,7 +72,7 @@ data:
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Forwarded-Proto $apigene_forwarded_proto;
                 proxy_connect_timeout 2s;
                 proxy_read_timeout 2s;
             }
@@ -78,7 +92,7 @@ data:
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Forwarded-Proto $apigene_forwarded_proto;
                 proxy_connect_timeout 60s;
                 proxy_send_timeout 300s;
                 proxy_read_timeout 300s;
@@ -93,11 +107,13 @@ data:
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Forwarded-Proto $apigene_forwarded_proto;
                 proxy_intercept_errors on;
                 error_page 502 = @json_502;
                 error_page 504 = @json_504;
             }
+
+            {{- if .Values.nginx.exposeApiDocs }}
 
             location ~ ^/(docs|openapi.json|redoc) {
                 proxy_pass http://backend:8000;
@@ -105,8 +121,15 @@ data:
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Forwarded-Proto $apigene_forwarded_proto;
             }
+            {{- else }}
+
+            location ~ ^/(docs|openapi.json|redoc) {
+                default_type application/json;
+                return 404 '{"detail":"Not Found"}';
+            }
+            {{- end }}
 
             {{- if .Values.mcpGw.enabled }}
 
@@ -116,7 +139,7 @@ data:
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Forwarded-Proto $apigene_forwarded_proto;
                 proxy_buffering off;
                 proxy_read_timeout 3600;
                 proxy_send_timeout 3600;
@@ -128,7 +151,7 @@ data:
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Forwarded-Proto $apigene_forwarded_proto;
             }
 
             location ~ ^/\.well-known/(.*)$ {
@@ -137,7 +160,7 @@ data:
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Forwarded-Proto $apigene_forwarded_proto;
             }
             {{- end }}
 
@@ -150,7 +173,7 @@ data:
                 proxy_set_header X-Forwarded-Host $http_host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Forwarded-Proto $apigene_forwarded_proto;
                 proxy_set_header Connection "";
             }
             {{- else }}
