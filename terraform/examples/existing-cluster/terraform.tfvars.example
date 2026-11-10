@@ -4,16 +4,14 @@
 # Then: kubectl port-forward -n apigene svc/nginx 8080:8080
 # Open: http://apigene.localtest:8080
 
-tenant_name  = "local"
-fqdn         = "apigene.localtest"
-image_tag    = "latest"
-public_url_port = 8080
+tenant_name                            = "local"
+fqdn                                   = "apigene.localtest"
+public_url_port                        = 8080
 copilot_internal_public_url_host_alias = true
 
 # For k3d/local testing without real TLS:
-enable_tls         = false
-use_staging_issuer = true
-aws_nlb            = false
+enable_tls            = false
+use_staging_issuer    = true
 install_storage_class = false
 
-# install_addons = true   # installs nginx-ingress + cert-manager
+# install_addons = true   # installs Envoy Gateway (Gateway API) + cert-manager

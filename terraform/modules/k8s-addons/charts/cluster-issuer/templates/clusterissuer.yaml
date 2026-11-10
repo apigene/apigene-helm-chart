@@ -9,6 +9,13 @@ spec:
     privateKeySecretRef:
       name: {{ .Values.name }}
     solvers:
+      # cert-manager attaches a temporary HTTPRoute for /.well-known/acme-challenge/ to
+      # the Gateway's HTTP listener.
       - http01:
-          ingress:
-            class: nginx
+          gatewayHTTPRoute:
+            parentRefs:
+              - group: gateway.networking.k8s.io
+                kind: Gateway
+                name: {{ .Values.gateway.name }}
+                namespace: {{ .Values.gateway.namespace }}
+                sectionName: http

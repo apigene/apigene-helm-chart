@@ -14,7 +14,7 @@ output "auth_secret_key" {
   sensitive   = true
 }
 
-output "ingress_hostname" {
-  description = "Ingress LoadBalancer hostname when addons are installed."
-  value       = var.install_addons ? module.k8s_addons[0].ingress_hostname : ""
+output "gateway_address_command" {
+  description = "Prints the Gateway address to point DNS at."
+  value       = "kubectl get gateway apigene -n ${module.apigene.namespace} -o jsonpath='{.status.addresses[0].value}'"
 }

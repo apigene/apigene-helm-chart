@@ -192,19 +192,3 @@ resource "aws_flow_log" "this" {
 }
 
 data "aws_caller_identity" "current" {}
-
-# Keep existing single-NAT deployments in place after adding count.
-moved {
-  from = aws_eip.nat
-  to   = aws_eip.nat[0]
-}
-
-moved {
-  from = aws_nat_gateway.this
-  to   = aws_nat_gateway.this[0]
-}
-
-moved {
-  from = aws_route_table.private
-  to   = aws_route_table.private[0]
-}

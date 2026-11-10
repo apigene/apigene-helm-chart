@@ -40,3 +40,15 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "install_gateway_api_crds" {
+  description = "Install the Gateway API standard CRDs (v1.6.1). Set false when the cluster already has them."
+  type        = bool
+  default     = true
+}
+
+variable "gateway_class_name" {
+  description = "Name of the GatewayClass for ALB Gateways (controllerName gateway.k8s.aws/alb)."
+  type        = string
+  default     = "alb"
+}

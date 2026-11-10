@@ -1,9 +1,14 @@
-# AWS Load Balancer Controller: turns the Apigene Ingress (className alb) into an
+# AWS Load Balancer Controller: turns the Apigene Gateway (GatewayClass "alb") into an
 # Application Load Balancer. IAM through IRSA, scoped to the controller's service account.
 #
 # iam_policy.json is the upstream policy for the pinned controller version:
 # https://github.com/kubernetes-sigs/aws-load-balancer-controller/blob/v3.6.2/docs/install/iam_policy.json
 # Refresh it whenever chart_version changes.
+#
+# Gateway API: the controller turns on its Gateway support only when the Gateway API
+# CRDs exist at startup, so they are installed first (charts/gateway-api-crds, vendored
+# by scripts/update-gateway-api-crds.sh). Its own Gateway CRDs (LoadBalancerConfiguration,
+# TargetGroupConfiguration, ListenerRuleConfiguration) ship in the controller chart.
 
 locals {
   oidc_issuer          = replace(var.oidc_issuer_url, "https://", "")
@@ -43,6 +48,16 @@ resource "aws_iam_role_policy_attachment" "this" {
   policy_arn = aws_iam_policy.this.arn
 }
 
+# Gateway API standard CRDs. Skip when the cluster already has them (another controller,
+# or a platform team owns them).
+resource "helm_release" "gateway_api_crds" {
+  count = var.install_gateway_api_crds ? 1 : 0
+
+  name      = "gateway-api-crds"
+  chart     = "${path.module}/charts/gateway-api-crds"
+  namespace = var.namespace
+}
+
 resource "helm_release" "this" {
   name       = "aws-load-balancer-controller"
   repository = "https://aws.github.io/eks-charts"
@@ -68,7 +83,30 @@ resource "helm_release" "this" {
     }
     # Only Services that ask for the controller get an NLB from it.
     enableServiceMutatorWebhook = false
+    controllerConfig = {
+      featureGates = {
+        ALBGatewayAPI = true
+        # Apigene needs no L4 (NLB) Gateways.
+        NLBGatewayAPI = false
+      }
+    }
   })]
 
-  depends_on = [aws_iam_role_policy_attachment.this]
+  depends_on = [
+    aws_iam_role_policy_attachment.this,
+    helm_release.gateway_api_crds,
+  ]
+}
+
+resource "helm_release" "gateway_class" {
+  name      = "gateway-class-${var.gateway_class_name}"
+  chart     = "${path.module}/charts/gateway-class"
+  namespace = var.namespace
+
+  set {
+    name  = "name"
+    value = var.gateway_class_name
+  }
+
+  depends_on = [helm_release.this]
 }

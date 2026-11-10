@@ -7,6 +7,12 @@ variable "aws_region" {
 variable "tenant_name" {
   description = "Tenant name used as a prefix for resources and Apigene config."
   type        = string
+
+  # DNS label, short enough for the ALB name apigene-<tenant> (32 characters max).
+  validation {
+    condition     = can(regex("^[a-z0-9]([a-z0-9-]{0,22}[a-z0-9])?$", var.tenant_name))
+    error_message = "tenant_name: 1-24 lowercase letters, digits and hyphens, not starting or ending with a hyphen."
+  }
 }
 
 variable "cluster_name" {
@@ -26,12 +32,6 @@ variable "hosted_zone_id" {
   type        = string
 }
 
-variable "letsencrypt_email" {
-  description = "Deprecated and unused: TLS now comes from ACM on the ALB."
-  type        = string
-  default     = ""
-}
-
 variable "image_tag" {
   description = "Apigene image tag. Empty uses the chart appVersion (pinned release)."
   type        = string
@@ -43,12 +43,6 @@ variable "auth_secret_key" {
   type        = string
   default     = ""
   sensitive   = true
-}
-
-variable "use_staging_issuer" {
-  description = "Deprecated and unused: TLS now comes from ACM on the ALB."
-  type        = bool
-  default     = false
 }
 
 variable "vpc_cidr_block" {

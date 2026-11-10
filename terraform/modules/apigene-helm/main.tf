@@ -26,19 +26,11 @@ locals {
   public_url_base = var.enable_tls ? "https://${var.fqdn}" : "http://${var.fqdn}"
   public_url      = var.public_url_port > 0 ? "${local.public_url_base}:${var.public_url_port}" : local.public_url_base
 
-  is_alb = var.ingress_class_name == "alb"
-
-  # ingress-nginx + cert-manager annotations. The ALB settings are chart values instead.
-  nginx_ingress_annotations = merge(
-    var.enable_tls && var.cluster_issuer_name != "" ? {
-      "cert-manager.io/cluster-issuer" = var.cluster_issuer_name
-    } : {},
-    {
-      "nginx.ingress.kubernetes.io/proxy-body-size"    = "15m"
-      "nginx.ingress.kubernetes.io/proxy-read-timeout" = "3600"
-      "nginx.ingress.kubernetes.io/proxy-send-timeout" = "3600"
-    }
-  )
+  # cert-manager issues the HTTPS listener certificate everywhere except on AWS, where
+  # the ALB uses ACM.
+  gateway_annotations = !var.aws_load_balancer && var.enable_tls && var.cluster_issuer_name != "" ? {
+    "cert-manager.io/cluster-issuer" = var.cluster_issuer_name
+  } : {}
 
   stateless_replicas = {
     replicas = var.app_replicas
@@ -52,20 +44,21 @@ locals {
       service = {
         type = "ClusterIP"
       }
-      ingress = {
+      gateway = {
         enabled     = true
         host        = var.fqdn
-        className   = var.ingress_class_name
-        annotations = local.is_alb ? {} : local.nginx_ingress_annotations
+        className   = var.gateway_class_name
+        annotations = local.gateway_annotations
         tls = {
           enabled = var.enable_tls
         }
-        alb = {
-          certificateArn = var.certificate_arn
-          groupName      = var.alb_group_name
-          inboundCidrs   = var.alb_inbound_cidrs
-          wafv2AclArn    = var.waf_acl_arn
-          tags           = var.alb_tags
+        aws = {
+          enabled          = var.aws_load_balancer
+          certificateArn   = var.certificate_arn
+          loadBalancerName = var.load_balancer_name
+          sourceRanges     = var.alb_inbound_cidrs
+          wafv2AclArn      = var.waf_acl_arn
+          tags             = var.alb_tags
         }
       }
       mongo = merge(

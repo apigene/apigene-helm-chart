@@ -5,9 +5,9 @@ provider "aws" {
 locals {
   cluster_name = var.cluster_name != "" ? var.cluster_name : "apigene-${var.tenant_name}"
   fqdn         = "${var.tenant_name}.${var.root_domain}"
-  # One IngressGroup per tenant; the controller tags the ALB with it.
-  alb_group_name = "apigene-${var.tenant_name}"
-  chart_path     = abspath("${path.module}/../../../chart/apigene")
+  # Fixed ALB name (max 32 characters) so the DNS record can look the ALB up.
+  load_balancer_name = substr("apigene-${var.tenant_name}", 0, 32)
+  chart_path         = abspath("${path.module}/../../../chart/apigene")
 
   common_tags = merge(var.tags, {
     Project    = "apigene"
@@ -86,11 +86,11 @@ provider "helm" {
 }
 
 # gp3 StorageClass only: TLS and load balancing come from ACM + the AWS Load Balancer
-# Controller, so ingress-nginx and cert-manager are not installed.
+# Controller (Gateway API), so Envoy Gateway and cert-manager are not installed.
 module "k8s_addons" {
   source = "../../modules/k8s-addons"
 
-  install_ingress_nginx = false
+  install_envoy_gateway = false
   install_cert_manager  = false
   install_storage_class = true
 
@@ -129,9 +129,10 @@ module "apigene" {
   storage_class   = "gp3"
   enable_tls      = true
 
-  ingress_class_name = "alb"
+  gateway_class_name = module.aws_load_balancer_controller.gateway_class_name
+  aws_load_balancer  = true
   certificate_arn    = module.certificate.certificate_arn
-  alb_group_name     = local.alb_group_name
+  load_balancer_name = local.load_balancer_name
   alb_inbound_cidrs  = var.alb_inbound_cidrs
   waf_acl_arn        = var.waf_acl_arn
   alb_tags           = local.common_tags
@@ -142,24 +143,21 @@ module "apigene" {
   # ALB IP targets: traffic to nginx comes from the ALB inside the VPC.
   network_policy_ingress_cidrs = [var.vpc_cidr_block]
 
-  # The controller must outlive the Ingress so it can delete the ALB on destroy.
+  # The controller must outlive the Gateway so it can delete the ALB on destroy.
   depends_on = [
     module.k8s_addons,
     module.aws_load_balancer_controller,
   ]
 }
 
-# The controller creates the ALB asynchronously after the Ingress appears.
+# The controller creates the ALB asynchronously after the Gateway appears.
 resource "time_sleep" "wait_for_alb" {
   depends_on      = [module.apigene]
   create_duration = "120s"
 }
 
 data "aws_lb" "apigene" {
-  tags = {
-    "elbv2.k8s.aws/cluster" = module.eks.cluster_name
-    "ingress.k8s.aws/stack" = local.alb_group_name
-  }
+  name = local.load_balancer_name
 
   depends_on = [time_sleep.wait_for_alb]
 }

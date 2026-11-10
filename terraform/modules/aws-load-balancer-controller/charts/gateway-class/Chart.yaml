@@ -1,0 +1,5 @@
+apiVersion: v2
+name: gateway-class
+description: GatewayClass for the AWS Load Balancer Controller (ALB)
+type: application
+version: 0.1.0
