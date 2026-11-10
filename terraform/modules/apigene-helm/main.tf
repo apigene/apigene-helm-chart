@@ -131,11 +131,13 @@ resource "helm_release" "apigene" {
     }
   }
 
+  # for_each must not be sensitive (Terraform < 1.10 rejects it), so only the
+  # "is it set" check is unmarked; the key itself stays sensitive in content.
   dynamic "set_sensitive" {
-    for_each = var.license_public_key != "" ? [var.license_public_key] : []
+    for_each = nonsensitive(var.license_public_key != "") ? ["license.publicKey"] : []
     content {
-      name  = "license.publicKey"
-      value = set_sensitive.value
+      name  = set_sensitive.value
+      value = var.license_public_key
     }
   }
 }
