@@ -27,14 +27,15 @@ variable "hosted_zone_id" {
 }
 
 variable "letsencrypt_email" {
-  description = "Email for Let's Encrypt certificate registration."
+  description = "Deprecated and unused: TLS now comes from ACM on the ALB."
   type        = string
+  default     = ""
 }
 
 variable "image_tag" {
-  description = "Apigene image tag."
+  description = "Apigene image tag. Empty uses the chart appVersion (pinned release)."
   type        = string
-  default     = "latest"
+  default     = ""
 }
 
 variable "auth_secret_key" {
@@ -45,7 +46,7 @@ variable "auth_secret_key" {
 }
 
 variable "use_staging_issuer" {
-  description = "Use Let's Encrypt staging issuer (for testing)."
+  description = "Deprecated and unused: TLS now comes from ACM on the ALB."
   type        = bool
   default     = false
 }
@@ -84,4 +85,46 @@ variable "tags" {
   description = "Additional tags for AWS resources."
   type        = map(string)
   default     = {}
+}
+
+variable "alb_inbound_cidrs" {
+  description = "CIDRs allowed to reach the ALB. Empty allows the internet (0.0.0.0/0)."
+  type        = list(string)
+  default     = []
+}
+
+variable "waf_acl_arn" {
+  description = "Optional AWS WAFv2 regional web ACL ARN for the ALB."
+  type        = string
+  default     = ""
+}
+
+variable "app_replicas" {
+  description = "Replicas for backend, copilot, mcp-gw and nginx (2+ for production)."
+  type        = number
+  default     = 2
+}
+
+variable "expose_api_docs" {
+  description = "Serve /docs, /redoc and /openapi.json publicly."
+  type        = bool
+  default     = false
+}
+
+variable "single_nat_gateway" {
+  description = "One shared NAT gateway. Set false for one per AZ (production)."
+  type        = bool
+  default     = true
+}
+
+variable "enable_vpc_flow_logs" {
+  description = "Send VPC flow logs to CloudWatch Logs."
+  type        = bool
+  default     = false
+}
+
+variable "cluster_public_access_cidrs" {
+  description = "CIDRs allowed to reach the public EKS API endpoint. Narrow to your admin networks."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
 }

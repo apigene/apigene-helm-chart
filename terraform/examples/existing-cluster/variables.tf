@@ -25,7 +25,7 @@ variable "fqdn" {
 variable "image_tag" {
   description = "Apigene image tag."
   type        = string
-  default     = "latest"
+  default     = ""
 }
 
 variable "auth_secret_key" {

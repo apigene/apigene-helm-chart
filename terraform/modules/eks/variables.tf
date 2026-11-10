@@ -60,3 +60,27 @@ variable "enable_ebs_csi_driver" {
   type        = bool
   default     = true
 }
+
+variable "endpoint_public_access" {
+  description = "Expose the Kubernetes API endpoint publicly (restricted by public_access_cidrs)."
+  type        = bool
+  default     = true
+}
+
+variable "public_access_cidrs" {
+  description = "CIDRs allowed to reach the public Kubernetes API endpoint. Narrow this to your admin networks."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
+variable "cluster_log_types" {
+  description = "EKS control plane log types sent to CloudWatch Logs."
+  type        = list(string)
+  default     = ["api", "audit", "authenticator"]
+}
+
+variable "enable_network_policy" {
+  description = "Enable NetworkPolicy enforcement in the VPC CNI add-on."
+  type        = bool
+  default     = true
+}

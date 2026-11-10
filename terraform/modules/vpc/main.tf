@@ -67,22 +67,29 @@ resource "aws_subnet" "private" {
   })
 }
 
+# One NAT gateway (cheaper) or one per AZ (no single point of failure for egress).
+locals {
+  nat_count = var.single_nat_gateway ? 1 : length(local.public_subnets)
+}
+
 resource "aws_eip" "nat" {
+  count  = local.nat_count
   domain = "vpc"
 
   tags = merge(local.tags, {
-    Name = "${var.name}-nat-eip"
+    Name = var.single_nat_gateway ? "${var.name}-nat-eip" : "${var.name}-nat-eip-${local.azs[count.index]}"
   })
 
   depends_on = [aws_internet_gateway.this]
 }
 
 resource "aws_nat_gateway" "this" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public[0].id
+  count         = local.nat_count
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = aws_subnet.public[count.index].id
 
   tags = merge(local.tags, {
-    Name = "${var.name}-nat"
+    Name = var.single_nat_gateway ? "${var.name}-nat" : "${var.name}-nat-${local.azs[count.index]}"
   })
 
   depends_on = [aws_internet_gateway.this]
@@ -102,15 +109,16 @@ resource "aws_route_table" "public" {
 }
 
 resource "aws_route_table" "private" {
+  count  = local.nat_count
   vpc_id = aws_vpc.this.id
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.this.id
+    nat_gateway_id = aws_nat_gateway.this[count.index].id
   }
 
   tags = merge(local.tags, {
-    Name = "${var.name}-private-rt"
+    Name = var.single_nat_gateway ? "${var.name}-private-rt" : "${var.name}-private-rt-${local.azs[count.index]}"
   })
 }
 
@@ -125,5 +133,78 @@ resource "aws_route_table_association" "private" {
   count = length(aws_subnet.private)
 
   subnet_id      = aws_subnet.private[count.index].id
-  route_table_id = aws_route_table.private.id
+  route_table_id = aws_route_table.private[var.single_nat_gateway ? 0 : count.index].id
+}
+
+# VPC flow logs to CloudWatch (optional, for audits and network troubleshooting).
+resource "aws_cloudwatch_log_group" "flow_logs" {
+  count             = var.enable_flow_logs ? 1 : 0
+  name              = "/aws/vpc/${var.name}/flow-logs"
+  retention_in_days = var.flow_logs_retention_days
+  tags              = local.tags
+}
+
+resource "aws_iam_role" "flow_logs" {
+  count = var.enable_flow_logs ? 1 : 0
+  name  = "${var.name}-vpc-flow-logs"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Action    = "sts:AssumeRole"
+      Principal = { Service = "vpc-flow-logs.amazonaws.com" }
+      Condition = {
+        StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
+      }
+    }]
+  })
+
+  tags = local.tags
+}
+
+resource "aws_iam_role_policy" "flow_logs" {
+  count = var.enable_flow_logs ? 1 : 0
+  name  = "write-flow-logs"
+  role  = aws_iam_role.flow_logs[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogStreams",
+      ]
+      Resource = "${aws_cloudwatch_log_group.flow_logs[0].arn}:*"
+    }]
+  })
+}
+
+resource "aws_flow_log" "this" {
+  count           = var.enable_flow_logs ? 1 : 0
+  vpc_id          = aws_vpc.this.id
+  traffic_type    = "ALL"
+  log_destination = aws_cloudwatch_log_group.flow_logs[0].arn
+  iam_role_arn    = aws_iam_role.flow_logs[0].arn
+  tags            = local.tags
+}
+
+data "aws_caller_identity" "current" {}
+
+# Keep existing single-NAT deployments in place after adding count.
+moved {
+  from = aws_eip.nat
+  to   = aws_eip.nat[0]
+}
+
+moved {
+  from = aws_nat_gateway.this
+  to   = aws_nat_gateway.this[0]
+}
+
+moved {
+  from = aws_route_table.private
+  to   = aws_route_table.private[0]
 }

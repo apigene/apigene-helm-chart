@@ -1,21 +1,30 @@
 # Customer example — copy to customer.tfvars and customize.
 # Result URL: https://{tenant_name}.{root_domain}
+# TLS: ACM certificate on an Application Load Balancer (validated in Route53).
 
-tenant_name       = "acme"
-aws_region        = "us-east-2"
-root_domain       = "example.com"
-hosted_zone_id    = "Z1234567890EXAMPLE"
-letsencrypt_email = "platform@example.com"
-image_tag         = "latest"
+tenant_name    = "acme"
+aws_region     = "us-east-2"
+root_domain    = "example.com"
+hosted_zone_id = "Z1234567890EXAMPLE"
 
-# Start with staging while validating DNS/ingress, then switch to false.
-use_staging_issuer = true
+# Empty = the release pinned in the chart (appVersion). Avoid "latest".
+# image_tag = "5.26.4"
+
+# Production hardening:
+# single_nat_gateway          = false              # one NAT gateway per AZ
+# enable_vpc_flow_logs        = true
+# cluster_public_access_cidrs = ["203.0.113.0/24"] # admin networks for kubectl
+# alb_inbound_cidrs           = ["198.51.100.0/24"]
+# waf_acl_arn                 = "arn:aws:wafv2:us-east-2:111122223333:regional/webacl/apigene/abcd"
+# node_instance_types         = ["m6i.large"]      # non-burstable (forces node group replacement)
 
 # Optional overrides:
 # cluster_name = "apigene-acme"
+# app_replicas = 2
 #
-# Small single-node (dev) example — smaller than default 2x t3.large:
+# Small single-node (dev) example:
 # node_instance_types = ["t3.medium"]
 # node_desired_size   = 1
 # node_min_size       = 1
 # node_max_size       = 1
+# app_replicas        = 1

@@ -18,3 +18,13 @@ output "auth_secret_key" {
 output "fqdn" {
   value = var.fqdn
 }
+
+output "mongo_password" {
+  value     = try(random_password.mongo[0].result, "")
+  sensitive = true
+}
+
+output "redis_password" {
+  value     = try(random_password.redis[0].result, "")
+  sensitive = true
+}

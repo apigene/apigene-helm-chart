@@ -8,19 +8,18 @@ variable "fqdn" {
   type        = string
 }
 
-variable "load_balancer_hostname" {
-  description = "Load balancer hostname to alias (nginx ingress NLB)."
+variable "load_balancer_dns_name" {
+  description = "DNS name of the load balancer to alias (ALB or NLB)."
   type        = string
 }
 
-variable "ttl" {
-  description = "TTL for non-alias records (unused for alias records)."
-  type        = number
-  default     = 300
+variable "load_balancer_zone_id" {
+  description = "Canonical hosted zone ID of the load balancer."
+  type        = string
 }
 
-variable "tags" {
-  description = "Tags applied to DNS resources."
-  type        = map(string)
-  default     = {}
+variable "ipv6" {
+  description = "Also create an AAAA alias (dual-stack load balancer only)."
+  type        = bool
+  default     = false
 }

@@ -26,9 +26,9 @@ variable "fqdn" {
 }
 
 variable "image_tag" {
-  description = "Apigene image tag for all services."
+  description = "Apigene image tag for all services. Empty uses the chart appVersion."
   type        = string
-  default     = "latest"
+  default     = ""
 }
 
 variable "auth_secret_key" {
@@ -39,7 +39,7 @@ variable "auth_secret_key" {
 }
 
 variable "cluster_issuer_name" {
-  description = "cert-manager ClusterIssuer name for ingress TLS."
+  description = "cert-manager ClusterIssuer name for ingress TLS (ingress-nginx only)."
   type        = string
   default     = "letsencrypt-prod"
 }
@@ -114,5 +114,89 @@ variable "copilot_internal_public_url_host_alias" {
 variable "extra_values" {
   description = "Additional Helm values merged on top of defaults."
   type        = map(any)
+  default     = {}
+}
+
+variable "ingress_class_name" {
+  description = "IngressClass: \"alb\" (AWS Load Balancer Controller) or \"nginx\" (ingress-nginx)."
+  type        = string
+  default     = "nginx"
+}
+
+variable "certificate_arn" {
+  description = "ACM certificate ARN for the ALB (ingress_class_name = alb)."
+  type        = string
+  default     = ""
+}
+
+variable "alb_group_name" {
+  description = "ALB IngressGroup name; also tags the ALB so Terraform can find it."
+  type        = string
+  default     = ""
+}
+
+variable "alb_inbound_cidrs" {
+  description = "CIDRs allowed to reach the ALB. Empty allows 0.0.0.0/0."
+  type        = list(string)
+  default     = []
+}
+
+variable "waf_acl_arn" {
+  description = "AWS WAFv2 web ACL ARN to attach to the ALB."
+  type        = string
+  default     = ""
+}
+
+variable "alb_tags" {
+  description = "AWS tags for the ALB."
+  type        = map(string)
+  default     = {}
+}
+
+variable "mongo_auth" {
+  description = "Require a password for the bundled MongoDB (generated)."
+  type        = bool
+  default     = true
+}
+
+variable "mongo_backup" {
+  description = "Run the nightly mongodump CronJob for the bundled MongoDB."
+  type        = bool
+  default     = true
+}
+
+variable "redis_auth" {
+  description = "Require a password for the bundled Redis (generated)."
+  type        = bool
+  default     = true
+}
+
+variable "app_replicas" {
+  description = "Replicas for backend, copilot, mcp-gw and nginx."
+  type        = number
+  default     = 1
+}
+
+variable "expose_api_docs" {
+  description = "Serve /docs, /redoc and /openapi.json publicly."
+  type        = bool
+  default     = false
+}
+
+variable "network_policy_ingress_cidrs" {
+  description = "Enable NetworkPolicy and allow these CIDRs to nginx (the VPC CIDR for an ALB)."
+  type        = list(string)
+  default     = []
+}
+
+variable "network_policy_ingress_namespace_labels" {
+  description = "Enable NetworkPolicy and allow the ingress controller namespace with these labels."
+  type        = map(string)
+  default     = {}
+}
+
+variable "service_account_annotations" {
+  description = "Annotations for the Apigene service account (IRSA role ARN)."
+  type        = map(string)
   default     = {}
 }

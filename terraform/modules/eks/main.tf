@@ -60,8 +60,12 @@ resource "aws_eks_cluster" "this" {
   vpc_config {
     subnet_ids              = var.subnet_ids
     endpoint_private_access = true
-    endpoint_public_access  = true
+    endpoint_public_access  = var.endpoint_public_access
+    public_access_cidrs     = var.endpoint_public_access ? var.public_access_cidrs : null
   }
+
+  # Control plane audit trail in CloudWatch Logs (/aws/eks/<cluster>/cluster).
+  enabled_cluster_log_types = var.cluster_log_types
 
   tags = var.tags
 
@@ -101,6 +105,11 @@ resource "aws_eks_addon" "vpc_cni" {
   cluster_name = aws_eks_cluster.this.name
   addon_name   = "vpc-cni"
   tags         = var.tags
+
+  # Enforce Kubernetes NetworkPolicy (the chart's networkPolicy.enabled).
+  configuration_values = var.enable_network_policy ? jsonencode({
+    enableNetworkPolicy = "true"
+  }) : null
 }
 
 resource "aws_eks_addon" "coredns" {
