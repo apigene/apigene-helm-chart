@@ -74,6 +74,10 @@ run_chart_tests() {
   # restricted-v2 assigns UIDs and fsGroups from the project range and rejects others.
   grep -E 'runAsUser|runAsGroup|fsGroup' "${out}/openshift.yaml" \
     && { echo "OpenShift profile sets fixed UIDs/GIDs" >&2; exit 1; }
+  # A policy selecting every pod would isolate other workloads in a shared namespace.
+  if grep -n 'podSelector: {}' "${out}/openshift.yaml"; then
+    echo "a NetworkPolicy selects every pod in the namespace" >&2; exit 1
+  fi
 
   echo "==> Helm template (external MongoDB and Redis)"
   helm template apigene "${CHART}" -n apigene "${HELM_SET[@]}" \
