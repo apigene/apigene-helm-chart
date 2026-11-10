@@ -476,3 +476,67 @@ Usage: include "apigene.appEnv" (dict "root" . "values" .Values.backend)
 {{ toYaml . }}
 {{- end }}
 {{- end }}
+
+{{/*
+Pod template for mongodump into the mongo-backup volume, shared by the nightly CronJob
+and the per-revision Job. Usage: include "apigene.mongoBackupPod" .
+*/}}
+{{- define "apigene.mongoBackupPod" -}}
+{{- $ctx := dict "root" . "component" "mongo-backup" "values" .Values.mongo -}}
+metadata:
+  labels:
+    app.kubernetes.io/component: mongo-backup
+    {{- include "apigene.selectorLabels" . | nindent 4 }}
+spec:
+  {{- include "apigene.podSpecCommon" $ctx | nindent 2 }}
+  restartPolicy: OnFailure
+  initContainers:
+    {{- include "apigene.waitForMongoInit" . | nindent 4 }}
+  containers:
+    - name: mongodump
+      image: {{ include "apigene.thirdPartyImage" (dict "image" .Values.mongo.image "root" .) | quote }}
+      imagePullPolicy: {{ .Values.mongo.image.pullPolicy }}
+      securityContext:
+        {{- include "apigene.containerSecurityContext" $ctx | nindent 8 }}
+      env:
+        - name: HOME
+          value: /tmp
+        - name: RETENTION_DAYS
+          value: {{ .Values.mongo.backup.retentionDays | quote }}
+        - name: MONGO_DB_URL
+          {{- if include "apigene.mongoAuthEnabled" . }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "apigene.secretName" . }}
+              key: MONGO_DB_URL
+          {{- else }}
+          value: {{ include "apigene.mongoUrl" . | quote }}
+          {{- end }}
+      command:
+        - bash
+        - -c
+        - |
+          set -euo pipefail
+          file="/backup/apigene-$(date -u +%Y%m%dT%H%M%SZ).archive.gz"
+          # A failed dump must not leave a partial archive behind.
+          trap 'rm -f "${file}.partial"' EXIT
+          mongodump --uri="${MONGO_DB_URL}" --archive="${file}.partial" --gzip
+          mv "${file}.partial" "${file}"
+          find /backup -name 'apigene-*.archive.gz' -mtime +"${RETENTION_DAYS}" -delete
+          ls -lh /backup
+      volumeMounts:
+        - name: backup
+          mountPath: /backup
+        - name: tmp
+          mountPath: /tmp
+      {{- with .Values.mongo.backup.resources }}
+      resources:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumes:
+    - name: backup
+      persistentVolumeClaim:
+        claimName: mongo-backup
+    - name: tmp
+      emptyDir: {}
+{{- end }}

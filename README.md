@@ -202,7 +202,7 @@ Add `images.pullSecrets` when the registry requires a login.
 
 ## MongoDB backups
 
-`mongo.backup.enabled` (on in `values-production.yaml`) runs a nightly `mongodump` CronJob (`mongo-backup`) into its own PVC and keeps `mongo.backup.retentionDays` days of archives. The volume lives in the cluster, so copy it off-cluster (EBS snapshots with AWS Backup, or Velero) for disaster recovery.
+`mongo.backup.enabled` (on in `values-production.yaml`) runs a nightly `mongodump` CronJob (`mongo-backup`) into its own PVC and keeps `mongo.backup.retentionDays` days of archives. Every install and upgrade also runs one backup (Job `mongo-backup-r<revision>`); it gives the volume its first consumer, so `helm --wait` does not hang on a `WaitForFirstConsumer` StorageClass. The volume lives in the cluster, so copy it off-cluster (EBS snapshots with AWS Backup, or Velero) for disaster recovery.
 
 To restore an archive (from your off-cluster copy, or copied out of the `mongo-backup` volume), then let the apps rebuild their state:
 
