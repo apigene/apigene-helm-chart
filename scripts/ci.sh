@@ -19,19 +19,88 @@ HELM_SET=(--set "auth.secretKey=${AUTH_SECRET}")
 CHART="${ROOT}/chart/apigene"
 
 run_chart_tests() {
+  local out
+  out="$(mktemp -d)"
+  local prod_secrets=(--set "mongo.auth.password=ci-mongo" --set "redis.auth.password=ci-redis")
+  local prod_url=(--set "publicUrl=https://apigene.example.com")
+  local aws_args=(-f "${CHART}/values-production.yaml" -f "${CHART}/values-aws.yaml"
+    --set "networkPolicy.ingressCidrs={10.0.0.0/16}")
+
   echo "==> Helm lint"
   helm lint "${CHART}" "${HELM_SET[@]}"
+  helm lint "${CHART}" "${aws_args[@]}" "${prod_url[@]}" "${HELM_SET[@]}" "${prod_secrets[@]}"
 
   echo "==> Helm template (default values)"
-  helm template apigene "${CHART}" \
-    -n apigene --create-namespace \
-    "${HELM_SET[@]}" > /dev/null
+  helm template apigene "${CHART}" -n apigene "${HELM_SET[@]}" > "${out}/default.yaml"
 
-  echo "==> Helm template (production values)"
-  helm template apigene "${CHART}" \
-    -n apigene --create-namespace \
+  echo "==> Helm template (production values: Gateway + cert-manager)"
+  helm template apigene "${CHART}" -n apigene \
     -f "${CHART}/values-production.yaml" \
-    "${HELM_SET[@]}" > /dev/null
+    "${prod_url[@]}" "${HELM_SET[@]}" "${prod_secrets[@]}" > "${out}/production.yaml"
+  grep -q 'cert-manager.io/cluster-issuer: letsencrypt-prod' "${out}/production.yaml" \
+    || { echo "production Gateway lacks the cert-manager annotation" >&2; exit 1; }
+  grep -q 'name: apigene-tls' "${out}/production.yaml" \
+    || { echo "production HTTPS listener lacks its certificateRef" >&2; exit 1; }
+
+  echo "==> Helm template (production + AWS ALB values)"
+  helm template apigene "${CHART}" -n apigene "${aws_args[@]}" "${prod_url[@]}" \
+    "${HELM_SET[@]}" "${prod_secrets[@]}" > "${out}/aws.yaml"
+  for kind in Gateway HTTPRoute LoadBalancerConfiguration TargetGroupConfiguration; do
+    grep -q "^kind: ${kind}$" "${out}/aws.yaml" || { echo "AWS profile renders no ${kind}" >&2; exit 1; }
+  done
+  grep -q 'cert-manager.io' "${out}/aws.yaml" && { echo "AWS profile keeps the cert-manager annotation" >&2; exit 1; }
+  grep -q 'certificateRefs' "${out}/aws.yaml" && { echo "AWS Gateway must not use certificateRefs (ACM)" >&2; exit 1; }
+
+  echo "==> values-aws.yaml requires the VPC CIDR for the network policy"
+  if helm template apigene "${CHART}" -n apigene -f "${CHART}/values-production.yaml" \
+    -f "${CHART}/values-aws.yaml" "${prod_url[@]}" "${HELM_SET[@]}" "${prod_secrets[@]}" >/dev/null 2>&1; then
+    echo "values-aws.yaml rendered without networkPolicy.ingressCidrs" >&2; exit 1
+  fi
+
+  echo "==> Helm template (Gateway attached to an existing Gateway)"
+  helm template apigene "${CHART}" -n apigene "${prod_url[@]}" "${HELM_SET[@]}" \
+    --set gateway.enabled=true --set gateway.create=false \
+    --set-json 'gateway.parentRefs=[{"name":"shared","namespace":"gateway-system","sectionName":"https"}]' \
+    > "${out}/gateway-attach.yaml"
+  grep -q '^kind: Gateway$' "${out}/gateway-attach.yaml" && { echo "create=false still renders a Gateway" >&2; exit 1; }
+
+  echo "==> No Ingress in any profile"
+  grep -l '^kind: Ingress$' "${out}"/*.yaml && { echo "an Ingress was rendered" >&2; exit 1; }
+
+  echo "==> Helm template (OpenShift values)"
+  helm template apigene "${CHART}" -n apigene \
+    -f "${CHART}/values-openshift.yaml" \
+    "${HELM_SET[@]}" --set mongo.auth.password=ci-mongo > "${out}/openshift.yaml"
+  # restricted-v2 assigns UIDs and fsGroups from the project range and rejects others.
+  grep -E 'runAsUser|runAsGroup|fsGroup' "${out}/openshift.yaml" \
+    && { echo "OpenShift profile sets fixed UIDs/GIDs" >&2; exit 1; }
+  # A policy selecting every pod would isolate other workloads in a shared namespace.
+  if grep -n 'podSelector: {}' "${out}/openshift.yaml"; then
+    echo "a NetworkPolicy selects every pod in the namespace" >&2; exit 1
+  fi
+
+  echo "==> Helm template (external MongoDB and Redis)"
+  helm template apigene "${CHART}" -n apigene "${HELM_SET[@]}" \
+    --set externalMongo.enabled=true --set externalMongo.url=mongodb://db:27017 \
+    --set externalRedis.enabled=true --set externalRedis.host=cache --set externalRedis.port=6380 \
+    > "${out}/external.yaml"
+  grep -q 'value: "6380"' "${out}/external.yaml" || { echo "externalRedis.port not applied" >&2; exit 1; }
+
+  echo "==> Resources follow the release namespace"
+  helm template apigene "${CHART}" -n customer-ns "${HELM_SET[@]}" \
+    | grep '^  namespace:' | grep -qv customer-ns && { echo "resource outside the release namespace" >&2; exit 1; }
+
+  if command -v kubeconform >/dev/null 2>&1; then
+    echo "==> kubeconform"
+    # The CRDs catalog covers Gateway API; the AWS controller CRDs are checked on a
+    # cluster (scripts/test-local-cluster.sh) instead.
+    kubeconform -strict -summary -ignore-missing-schemas \
+      -schema-location default \
+      -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+      -kubernetes-version "${KUBE_VERSION:-1.34.0}" "${out}"/*.yaml
+  else
+    echo "(kubeconform not installed; skipping schema validation)"
+  fi
 
   echo "Chart tests passed."
 }

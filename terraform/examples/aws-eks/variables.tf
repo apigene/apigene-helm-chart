@@ -7,6 +7,12 @@ variable "aws_region" {
 variable "tenant_name" {
   description = "Tenant name used as a prefix for resources and Apigene config."
   type        = string
+
+  # DNS label, short enough for the ALB name apigene-<tenant> (32 characters max).
+  validation {
+    condition     = can(regex("^[a-z0-9]([a-z0-9-]{0,22}[a-z0-9])?$", var.tenant_name))
+    error_message = "tenant_name: 1-24 lowercase letters, digits and hyphens, not starting or ending with a hyphen."
+  }
 }
 
 variable "cluster_name" {
@@ -26,15 +32,10 @@ variable "hosted_zone_id" {
   type        = string
 }
 
-variable "letsencrypt_email" {
-  description = "Email for Let's Encrypt certificate registration."
-  type        = string
-}
-
 variable "image_tag" {
-  description = "Apigene image tag."
+  description = "Apigene image tag. Empty uses the chart appVersion (pinned release)."
   type        = string
-  default     = "latest"
+  default     = ""
 }
 
 variable "auth_secret_key" {
@@ -42,12 +43,6 @@ variable "auth_secret_key" {
   type        = string
   default     = ""
   sensitive   = true
-}
-
-variable "use_staging_issuer" {
-  description = "Use Let's Encrypt staging issuer (for testing)."
-  type        = bool
-  default     = false
 }
 
 variable "vpc_cidr_block" {
@@ -84,4 +79,46 @@ variable "tags" {
   description = "Additional tags for AWS resources."
   type        = map(string)
   default     = {}
+}
+
+variable "alb_inbound_cidrs" {
+  description = "CIDRs allowed to reach the ALB. Empty allows the internet (0.0.0.0/0)."
+  type        = list(string)
+  default     = []
+}
+
+variable "waf_acl_arn" {
+  description = "Optional AWS WAFv2 regional web ACL ARN for the ALB."
+  type        = string
+  default     = ""
+}
+
+variable "app_replicas" {
+  description = "Replicas for backend, copilot, mcp-gw and nginx (2+ for production)."
+  type        = number
+  default     = 2
+}
+
+variable "expose_api_docs" {
+  description = "Serve /docs, /redoc and /openapi.json publicly."
+  type        = bool
+  default     = false
+}
+
+variable "single_nat_gateway" {
+  description = "One shared NAT gateway. Set false for one per AZ (production)."
+  type        = bool
+  default     = true
+}
+
+variable "enable_vpc_flow_logs" {
+  description = "Send VPC flow logs to CloudWatch Logs."
+  type        = bool
+  default     = false
+}
+
+variable "cluster_public_access_cidrs" {
+  description = "CIDRs allowed to reach the public EKS API endpoint. Narrow to your admin networks."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
 }

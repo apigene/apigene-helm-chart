@@ -21,14 +21,14 @@ variable "tenant_name" {
 }
 
 variable "fqdn" {
-  description = "Public hostname for ingress and publicUrl."
+  description = "Public hostname for the Gateway and publicUrl."
   type        = string
 }
 
 variable "image_tag" {
-  description = "Apigene image tag for all services."
+  description = "Apigene image tag for all services. Empty uses the chart appVersion."
   type        = string
-  default     = "latest"
+  default     = ""
 }
 
 variable "auth_secret_key" {
@@ -39,13 +39,13 @@ variable "auth_secret_key" {
 }
 
 variable "cluster_issuer_name" {
-  description = "cert-manager ClusterIssuer name for ingress TLS."
+  description = "cert-manager ClusterIssuer for the Gateway HTTPS listener (not used with aws_load_balancer)."
   type        = string
   default     = "letsencrypt-prod"
 }
 
 variable "enable_tls" {
-  description = "Enable TLS on the ingress."
+  description = "Serve HTTPS on the Gateway (and redirect HTTP to it)."
   type        = bool
   default     = true
 }
@@ -114,5 +114,100 @@ variable "copilot_internal_public_url_host_alias" {
 variable "extra_values" {
   description = "Additional Helm values merged on top of defaults."
   type        = map(any)
+  default     = {}
+}
+
+variable "gateway_class_name" {
+  description = "GatewayClass for the Apigene Gateway: \"alb\" (AWS Load Balancer Controller) or \"eg\" (Envoy Gateway from k8s-addons)."
+  type        = string
+  default     = "eg"
+}
+
+variable "aws_load_balancer" {
+  description = "The GatewayClass belongs to the AWS Load Balancer Controller: ALB settings, IP targets and ACM instead of cert-manager."
+  type        = bool
+  default     = false
+}
+
+variable "certificate_arn" {
+  description = "ACM certificate ARN for the ALB (aws_load_balancer). Empty: the controller discovers one for fqdn."
+  type        = string
+  default     = ""
+}
+
+variable "load_balancer_name" {
+  description = "Fixed ALB name (max 32 characters) so callers can look the ALB up. Empty: generated."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = can(regex("^$|^[A-Za-z0-9](?:[A-Za-z0-9-]{0,30}[A-Za-z0-9])?$", var.load_balancer_name))
+    error_message = "load_balancer_name: up to 32 letters, digits and hyphens, not starting or ending with a hyphen."
+  }
+}
+
+variable "alb_inbound_cidrs" {
+  description = "CIDRs allowed to reach the ALB. Empty allows 0.0.0.0/0."
+  type        = list(string)
+  default     = []
+}
+
+variable "waf_acl_arn" {
+  description = "AWS WAFv2 web ACL ARN to attach to the ALB."
+  type        = string
+  default     = ""
+}
+
+variable "alb_tags" {
+  description = "AWS tags for the ALB."
+  type        = map(string)
+  default     = {}
+}
+
+variable "mongo_auth" {
+  description = "Require a password for the bundled MongoDB (generated)."
+  type        = bool
+  default     = true
+}
+
+variable "mongo_backup" {
+  description = "Run the nightly mongodump CronJob for the bundled MongoDB."
+  type        = bool
+  default     = true
+}
+
+variable "redis_auth" {
+  description = "Require a password for the bundled Redis (generated)."
+  type        = bool
+  default     = true
+}
+
+variable "app_replicas" {
+  description = "Replicas for backend, copilot, mcp-gw and nginx."
+  type        = number
+  default     = 1
+}
+
+variable "expose_api_docs" {
+  description = "Serve /docs, /redoc and /openapi.json publicly."
+  type        = bool
+  default     = false
+}
+
+variable "network_policy_ingress_cidrs" {
+  description = "Enable NetworkPolicy and allow these CIDRs to nginx (the VPC CIDR for an ALB)."
+  type        = list(string)
+  default     = []
+}
+
+variable "network_policy_ingress_namespace_labels" {
+  description = "Enable NetworkPolicy and allow the Gateway proxy namespace with these labels (e.g. envoy-gateway-system)."
+  type        = map(string)
+  default     = {}
+}
+
+variable "service_account_annotations" {
+  description = "Annotations for the Apigene service account (IRSA role ARN)."
+  type        = map(string)
   default     = {}
 }

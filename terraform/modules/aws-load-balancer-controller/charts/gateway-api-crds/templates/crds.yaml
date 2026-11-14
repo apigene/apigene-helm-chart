@@ -1,0 +1,2 @@
+{{- /* Files.Get, not a template: the CRD descriptions are not Helm templates. */}}
+{{ .Files.Get "files/standard-install.yaml" }}

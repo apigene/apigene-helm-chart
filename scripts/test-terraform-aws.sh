@@ -37,14 +37,9 @@ kubectl get nodes
 echo "Checking Apigene pods..."
 kubectl get pods -n "${NAMESPACE}"
 
-echo "Checking cert-manager certificate..."
-if kubectl get certificate -n "${NAMESPACE}" >/dev/null 2>&1; then
-  kubectl wait --for=condition=ready certificate -n "${NAMESPACE}" --all --timeout=600s || true
-  kubectl get certificate -n "${NAMESPACE}"
-fi
-
-echo "Checking ingress..."
-kubectl get ingress -n "${NAMESPACE}"
+echo "Checking the Gateway (ALB from the AWS Load Balancer Controller)..."
+kubectl wait --for=condition=Programmed gateway --all -n "${NAMESPACE}" --timeout=600s
+kubectl get gateway,httproute -n "${NAMESPACE}"
 
 echo "Running smoke tests against ${APIGENE_URL}..."
 BASE_URL="${APIGENE_URL}" "${ROOT}/scripts/smoke.sh"

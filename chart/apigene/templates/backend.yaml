@@ -1,4 +1,5 @@
 {{- if .Values.backend.enabled }}
+{{- $ctx := dict "root" . "component" "backend" "values" .Values.backend }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -26,25 +27,23 @@ metadata:
     app.kubernetes.io/component: backend
 spec:
   replicas: {{ .Values.backend.replicas }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
   selector:
     matchLabels:
       app.kubernetes.io/component: backend
       {{- include "apigene.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      labels:
-        app.kubernetes.io/component: backend
-        {{- include "apigene.selectorLabels" . | nindent 8 }}
+      {{- include "apigene.podMetadata" $ctx | nindent 6 }}
     spec:
-      {{- include "apigene.imagePullSecrets" . | nindent 6 }}
-      {{- include "apigene.nodeScheduling" . | nindent 6 }}
+      {{- include "apigene.podSpecCommon" $ctx | nindent 6 }}
       initContainers:
         {{- include "apigene.waitForMongoInit" . | nindent 8 }}
         {{- include "apigene.waitForRedisInit" . | nindent 8 }}
       containers:
         - name: backend
           image: {{ include "apigene.backendImage" . | quote }}
-          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          imagePullPolicy: {{ include "apigene.pullPolicy" . }}
           args: ["app"]
           ports:
             - name: http
@@ -53,25 +52,29 @@ spec:
             - secretRef:
                 name: {{ include "apigene.secretName" . }}
           env:
-            {{- include "apigene.commonEnv" . | nindent 12 }}
+            {{- include "apigene.appEnv" $ctx | nindent 12 }}
+          securityContext:
+            {{- include "apigene.containerSecurityContext" $ctx | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
           readinessProbe:
-            exec:
-              command:
-                - python
-                - -c
-                - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"
-            initialDelaySeconds: 15
+            httpGet:
+              path: /api/health
+              port: http
             periodSeconds: 10
             timeoutSeconds: 5
           livenessProbe:
-            exec:
-              command:
-                - python
-                - -c
-                - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"
-            initialDelaySeconds: 60
+            httpGet:
+              path: /api/health
+              port: http
             periodSeconds: 20
             timeoutSeconds: 5
+            failureThreshold: 3
           {{- with .Values.backend.resources }}
           resources:
             {{- toYaml . | nindent 12 }}

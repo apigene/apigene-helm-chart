@@ -40,8 +40,10 @@ terraform apply -auto-approve \
   -var="fqdn=apigene.localtest" \
   -var="enable_tls=false" \
   -var="use_staging_issuer=true" \
-  -var="aws_nlb=false" \
   -var="install_storage_class=false"
+
+echo "Waiting for the Gateway (Envoy Gateway)..."
+kubectl wait --for=condition=Programmed gateway/apigene -n "${NAMESPACE}" --timeout=300s
 
 echo "Waiting for Apigene pods..."
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=apigene \
@@ -68,7 +70,6 @@ if [[ "${TEARDOWN}" == "1" ]]; then
     -var="fqdn=apigene.localtest" \
     -var="enable_tls=false" \
     -var="use_staging_issuer=true" \
-    -var="aws_nlb=false" \
     -var="install_storage_class=false"
   echo "Deleting k3d cluster ${CLUSTER_NAME}..."
   k3d cluster delete "${CLUSTER_NAME}"

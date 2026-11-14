@@ -1,25 +1,47 @@
 # Default values for the Apigene self-hosted platform.
 # Mirrors apigene-docker-compose/.env.example — keep both in sync.
+#
+# Profiles shipped with the chart:
+#   values-production.yaml  generic production overrides (any Kubernetes)
+#   values-aws.yaml         Amazon EKS with the AWS Load Balancer Controller (ALB)
+#   values-openshift.yaml   OpenShift Route + NetworkPolicy
 
 nameOverride: ""
 fullnameOverride: ""
 
-# Pin all Apigene service images (public ECR). Same as APIGENE_IMAGE_TAG in docker-compose.
-imageTag: "latest"
+# Namespace for every resource. Empty uses the release namespace (helm install -n <ns>).
+namespace:
+  # Prefer --create-namespace on helm install. Set true only when Helm should own it.
+  create: false
+  name: ""
+
+# Labels added to every resource.
+commonLabels: {}
+
+# Pin all Apigene service images. Empty uses the chart appVersion.
+# Same as APIGENE_IMAGE_TAG in docker-compose. Avoid "latest" in production.
+imageTag: ""
 
 images:
   registry: public.ecr.aws/apigene
   # Pull every image from one registry, including MongoDB, Redis and the init image.
   # Images are expected under their short names: <mirror>/apigene-backend:<tag>,
-  # <mirror>/mongo:7. "./apigene images push" in apigene-docker-compose publishes them there.
+  # <mirror>/mongo:7.0.45. "./olgene images push" in apigene-docker-compose publishes them there.
   mirror: ""
-  pullPolicy: IfNotPresent
+  # Empty picks Always for a "latest" tag and IfNotPresent otherwise.
+  pullPolicy: ""
   pullSecrets: []
   # Optional per-service tag overrides (APIGENE_*_IMAGE_TAG in docker-compose):
   # backendTag: ""
   # copilotTag: ""
   # mcpGwTag: ""
   # nginxTag: ""
+  # Optional digests (sha256:…). A digest wins over the tag.
+  digests:
+    backend: ""
+    copilot: ""
+    mcpGw: ""
+    nginx: ""
 
 # Logical tenant and deployment mode (passed to all app containers).
 tenantName: local
@@ -45,9 +67,14 @@ allowedOrigins: ""
 auth:
   # Self-hosted default (matches docker-compose NEXT_PUBLIC_AUTH_PROVIDER=apigene).
   provider: apigene
-  # Required for production. Generate: openssl rand -hex 32
+  # Required. Generate: openssl rand -hex 32
   secretKey: ""
-  # Use an existing Kubernetes secret instead of creating one.
+  # Use an existing Kubernetes secret instead of the chart-managed one, for example one
+  # synced from AWS Secrets Manager by External Secrets Operator. It must hold every key
+  # the chart would otherwise write: AUTH_APIGENE_SECRET_KEY, plus MONGO_PASSWORD and
+  # MONGO_DB_URL (mongo.auth), REDIS_PASSWORD (redis.auth or externalRedis.password),
+  # MONGO_DB_URL (externalMongo), KEYCLOAK_CLIENT_SECRET, OPENAI_API_KEY and
+  # LICENSE_PUBLIC_KEY when used.
   existingSecret: ""
   # Key inside existingSecret for AUTH_APIGENE_SECRET_KEY (default key name shown).
   existingSecretKey: AUTH_APIGENE_SECRET_KEY
@@ -70,32 +97,97 @@ cache:
 logging:
   env: local
 
-# Optional LLM provider keys (add after install via --set or values file).
+# Optional LLM provider keys (add after install via a values file or existingSecret).
 llm:
   openaiApiKey: ""
 
-namespace:
-  # Use --create-namespace on helm install (avoids conflict with Helm's namespace flag).
-  create: false
-  name: apigene
+# Extra environment variables for every Apigene container (backend, worker, copilot, mcp-gw).
+extraEnv: []
+
+# --- Pod defaults (apply to every workload; each component can override) ---
+
+serviceAccount:
+  create: true
+  # Empty uses the chart fullname.
+  name: ""
+  # IRSA example: eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/<role>
+  # EKS Pod Identity needs no annotation; associate the role with this service account.
+  annotations: {}
+  # The apps do not call the Kubernetes API.
+  automountToken: false
+
+podAnnotations: {}
+podLabels: {}
+priorityClassName: ""
+
+# Pod Security Standards "restricted" compatible defaults.
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+
+# Images are linux/amd64 only. Keep the arch selector when merging your own.
+nodeSelector:
+  kubernetes.io/arch: amd64
+tolerations: []
+affinity: {}
+
+# Spread replicas across zones and nodes (soft constraint) unless a component sets its own.
+topologySpread:
+  enabled: true
+  whenUnsatisfiable: ScheduleAnyway
+
+# Rendered only for components with more than one replica, so drains never block.
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+revisionHistoryLimit: 5
 
 # Init containers that wait for dependencies.
 initImage:
-  repository: docker.io/library/busybox
-  tag: "1.36"
+  repository: public.ecr.aws/docker/library/busybox
+  tag: "1.36.1"
   pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 100m
+      memory: 32Mi
+  securityContext:
+    runAsUser: 65534
+    runAsGroup: 65534
+    readOnlyRootFilesystem: true
 
-# --- Bundled MongoDB (default on) ---
+# --- Bundled MongoDB (default on; evaluation and small installs) ---
+# For production prefer a managed MongoDB (externalMongo) or enable mongo.backup.
 
 mongo:
   enabled: true
   image:
-    repository: docker.io/library/mongo
-    tag: "7"
+    repository: public.ecr.aws/docker/library/mongo
+    tag: "7.0.45"
     pullPolicy: IfNotPresent
   storage: 10Gi
   storageClass: ""
   resources: {}
+  podSecurityContext:
+    runAsUser: 999
+    runAsGroup: 999
+    fsGroup: 999
+    fsGroupChangePolicy: OnRootMismatch
+  securityContext:
+    readOnlyRootFilesystem: true
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
   # Create an application user and require authentication. Also works on a volume
   # that already holds data. Changing the password later needs a manual update in MongoDB.
   auth:
@@ -103,21 +195,42 @@ mongo:
     username: apigene
     # With auth.existingSecret, put MONGO_PASSWORD and MONGO_DB_URL in that secret.
     password: ""
+  # Nightly mongodump into its own PVC. Copy the PVC off-cluster (AWS Backup / EBS
+  # snapshots, Velero) for real disaster recovery.
+  backup:
+    enabled: false
+    schedule: "0 2 * * *"
+    retentionDays: 7
+    storage: 20Gi
+    storageClass: ""
+    resources: {}
 
 externalMongo:
   enabled: false
+  # Stored in the chart secret (it usually carries a password). With auth.existingSecret,
+  # put MONGO_DB_URL in that secret and leave this empty.
   url: ""
 
 # --- Bundled Redis (default on) ---
+# No persistence: queued Celery tasks are lost on restart. Prefer externalRedis
+# (Amazon ElastiCache) for production.
 
 redis:
   enabled: true
   image:
-    repository: docker.io/library/redis
-    tag: 7-alpine
+    repository: public.ecr.aws/docker/library/redis
+    tag: 7.4.12-alpine
     pullPolicy: IfNotPresent
   port: 6379
   resources: {}
+  podSecurityContext:
+    runAsUser: 999
+    runAsGroup: 999
+  securityContext:
+    readOnlyRootFilesystem: true
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
   # Require a password. The backend needs an image newer than 5.25.7 for this.
   auth:
     enabled: false
@@ -128,23 +241,50 @@ externalRedis:
   enabled: false
   host: ""
   port: 6379
+  # Written to the chart secret as REDIS_PASSWORD (ElastiCache AUTH token).
+  password: ""
 
 # --- Application services ---
+# Each component accepts: replicas, resources, podSecurityContext, securityContext,
+# nodeSelector, tolerations, affinity, topologySpreadConstraints, podAnnotations,
+# podLabels, extraEnv.
 
 backend:
   enabled: true
   replicas: 1
+  uvicornWorkers: 1
   resources: {}
+  podSecurityContext:
+    runAsUser: 10001
+    runAsGroup: 0
+  securityContext: {}
+  extraEnv: []
 
 backendWorker:
   enabled: true
   replicas: 1
   resources: {}
+  # Time for in-flight Celery tasks to finish on shutdown.
+  terminationGracePeriodSeconds: 120
+  # celery inspect ping. Disable if your worker image does not ship the celery CLI.
+  livenessProbe:
+    enabled: true
+  podSecurityContext:
+    runAsUser: 10001
+    runAsGroup: 0
+  securityContext: {}
+  extraEnv: []
 
 copilot:
   enabled: true
   replicas: 1
   resources: {}
+  podSecurityContext:
+    # The image's nextjs user.
+    runAsUser: 1001
+    runAsGroup: 65533
+  securityContext: {}
+  extraEnv: []
   # Map publicUrl hostname to the in-cluster nginx Service IP so copilot server-side
   # auth/API calls work (docker-compose uses network_mode: service:nginx for this).
   # Enable for local k3d when publicUrl hostname is not cluster DNS (e.g. apigene.localtest).
@@ -154,29 +294,102 @@ mcpGw:
   enabled: true
   replicas: 1
   resources: {}
+  podSecurityContext:
+    runAsUser: 10001
+    runAsGroup: 0
+  securityContext: {}
+  extraEnv: []
 
 nginx:
   enabled: true
   replicas: 1
   resources: {}
+  podSecurityContext:
+    # The image's nginx user.
+    runAsUser: 101
+    runAsGroup: 101
+  securityContext:
+    readOnlyRootFilesystem: true
+  # Serve /docs, /redoc and /openapi.json publicly. Turn off for customer-facing installs.
+  exposeApiDocs: true
+  # Pass X-Forwarded-Proto from the load balancer / Gateway to the apps, so they see
+  # https when TLS ends in front of nginx. Disable if nginx is exposed directly.
+  trustForwardedProto: true
 
 # --- Exposure ---
 
 service:
-  type: LoadBalancer
+  # ClusterIP by default: expose through the Gateway (TLS) or port-forward.
+  # LoadBalancer publishes plain HTTP on service.port; add TLS annotations if you use it.
+  type: ClusterIP
   port: 8080
   annotations: {}
 
-ingress:
+# Kubernetes Gateway API (gateway.networking.k8s.io/v1): a Gateway plus an HTTPRoute to
+# the in-cluster nginx router. Needs a Gateway API implementation in the cluster, such as
+# the AWS Load Balancer Controller (ALB), Envoy Gateway, Istio, Cilium or Traefik.
+gateway:
   enabled: false
-  className: nginx
+  # Create the Gateway in this release. Set false to attach the HTTPRoute to a Gateway
+  # the platform already runs (parentRefs).
+  create: true
+  # GatewayClass, e.g. "alb" (AWS Load Balancer Controller) or "eg" (Envoy Gateway).
+  className: ""
+  # Hostname users open. Empty uses the publicUrl hostname.
+  host: ""
+  # Gateway annotations, e.g. cert-manager.io/cluster-issuer: letsencrypt-prod.
   annotations: {}
-  host: apigene.example.com
   tls:
     enabled: true
+    # kubernetes.io/tls Secret for the HTTPS listener. Empty: <fullname>-tls, which
+    # cert-manager creates when the Gateway has a cert-manager.io/cluster-issuer
+    # annotation. Not used with gateway.aws.enabled (the certificate comes from ACM).
     secretName: ""
+  # With create=false: the Gateway listeners to attach the HTTPRoute to.
+  parentRefs: []
+  #   - name: shared-gateway
+  #     namespace: gateway-system
+  #     sectionName: https
+  # HTTPRoute timeouts. nginx enforces the per-path limits; the Gateway only has to let
+  # hour-long MCP streams through (Envoy's default route timeout is 15s). Not rendered
+  # with gateway.aws.enabled: the ALB has no per-route timeout (idleTimeoutSeconds).
+  # Set to {} for implementations that reject HTTPRoute timeouts.
+  timeouts:
+    request: 3600s
+  # Envoy Gateway (GatewayClass "eg" from terraform/modules/k8s-addons): a
+  # ClientTrafficPolicy so idle MCP streams outlive Envoy's 5-minute stream idle timeout.
+  envoy:
+    enabled: false
+    streamIdleTimeout: 1h
+  # AWS Load Balancer Controller (GatewayClass controllerName gateway.k8s.aws/alb):
+  # renders a LoadBalancerConfiguration (with create=true) and a TargetGroupConfiguration
+  # that registers the nginx pods as IP targets.
+  aws:
+    enabled: false
+    scheme: internet-facing
+    # Fixed ALB name (max 32 characters), so Terraform can look it up. Empty: generated.
+    loadBalancerName: ""
+    # ACM certificate ARN. Empty lets the controller discover an ACM certificate for host.
+    certificateArn: ""
+    sslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    # MCP streams stay open; the ALB default of 60s would cut them.
+    idleTimeoutSeconds: 3600
+    # Who may reach the ALB, e.g. ["203.0.113.0/24"]. Empty allows 0.0.0.0/0.
+    sourceRanges: []
+    # Subnet IDs or names for the ALB. Empty: discovery via the kubernetes.io/role/elb
+    # (internet-facing) or kubernetes.io/role/internal-elb (internal) subnet tags.
+    subnets: []
+    # AWS WAFv2 web ACL ARN to attach.
+    wafv2AclArn: ""
+    # Extra load balancer attributes, e.g.
+    #   - {key: deletion_protection.enabled, value: "true"}
+    #   - {key: access_logs.s3.enabled, value: "true"}
+    #   - {key: access_logs.s3.bucket, value: my-bucket}
+    extraAttributes: []
+    # AWS tags for the ALB and target group, e.g. {Project: apigene}.
+    tags: {}
 
-# OpenShift Route. Use instead of ingress on OpenShift.
+# OpenShift Route. Use instead of the Gateway on OpenShift releases without Gateway API.
 route:
   enabled: false
   # Empty lets the router generate a hostname.
@@ -184,14 +397,14 @@ route:
   # Router timeout; long-lived MCP streams need more than the 30s default.
   timeout: 3600s
 
-# Restrict inbound traffic to this namespace and the ingress controller.
+# Restrict inbound traffic to this namespace plus the Gateway path into nginx.
 # Outbound traffic stays open: Keycloak, LLM providers and customer APIs need it.
+# On EKS, enable network policy in the VPC CNI add-on or these policies do nothing.
 networkPolicy:
   enabled: false
-  # Labels on the ingress controller's namespace. Required when enabled.
+  # Labels on the namespace of the Gateway proxies (e.g. envoy-gateway-system) or of the
+  # OpenShift router.
   ingressNamespaceLabels: {}
-
-# Node scheduling (images are linux/amd64).
-nodeSelector: {}
-tolerations: []
-affinity: {}
+  # CIDRs allowed to reach nginx directly. An ALB with IP targets connects from its
+  # addresses inside the VPC, so use the VPC CIDR here.
+  ingressCidrs: []

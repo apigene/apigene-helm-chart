@@ -1,26 +1,37 @@
 {{- if .Values.networkPolicy.enabled }}
-{{- if not .Values.networkPolicy.ingressNamespaceLabels }}
-{{- fail "networkPolicy.ingressNamespaceLabels is required when networkPolicy.enabled=true" }}
+{{- if not (or .Values.networkPolicy.ingressNamespaceLabels .Values.networkPolicy.ingressCidrs) }}
+{{- fail "networkPolicy needs ingressNamespaceLabels (Gateway proxy or router namespace) or ingressCidrs (e.g. the VPC CIDR for an ALB)" }}
 {{- end }}
+{{- /*
+Both policies select only this release's pods, so other workloads in a shared
+namespace keep their own traffic rules: a policy that selected every pod would cut
+them off from their routes.
+*/}}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-same-namespace
+  name: {{ include "apigene.fullname" . }}-internal
   namespace: {{ include "apigene.namespace" . }}
   labels:
     {{- include "apigene.labels" . | nindent 4 }}
 spec:
-  podSelector: {}
+  podSelector:
+    matchLabels:
+      {{- include "apigene.selectorLabels" . | nindent 6 }}
   policyTypes:
     - Ingress
   ingress:
+    # Apigene components talk to each other (and the backup job and helm test reach
+    # MongoDB and nginx); nothing else in the namespace gets in.
     - from:
-        - podSelector: {}
+        - podSelector:
+            matchLabels:
+              {{- include "apigene.selectorLabels" . | nindent 14 }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-from-router
+  name: {{ include "apigene.fullname" . }}-from-router
   namespace: {{ include "apigene.namespace" . }}
   labels:
     {{- include "apigene.labels" . | nindent 4 }}
@@ -33,9 +44,15 @@ spec:
     - Ingress
   ingress:
     - from:
+        {{- with .Values.networkPolicy.ingressNamespaceLabels }}
         - namespaceSelector:
             matchLabels:
-              {{- toYaml .Values.networkPolicy.ingressNamespaceLabels | nindent 14 }}
+              {{- toYaml . | nindent 14 }}
+        {{- end }}
+        {{- range .Values.networkPolicy.ingressCidrs }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
       ports:
         - protocol: TCP
           port: 8080

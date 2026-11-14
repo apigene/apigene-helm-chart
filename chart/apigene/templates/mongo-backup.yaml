@@ -1,0 +1,58 @@
+{{- if and (include "apigene.bundledMongo" .) .Values.mongo.backup.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongo-backup
+  namespace: {{ include "apigene.namespace" . }}
+  labels:
+    {{- include "apigene.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongo-backup
+  annotations:
+    # Keep the backups when the release is uninstalled.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- with (.Values.mongo.backup.storageClass | default .Values.mongo.storageClass) }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.mongo.backup.storage }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mongo-backup
+  namespace: {{ include "apigene.namespace" . }}
+  labels:
+    {{- include "apigene.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongo-backup
+spec:
+  schedule: {{ .Values.mongo.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        {{- include "apigene.mongoBackupPod" . | nindent 8 }}
+---
+# A backup on every install and upgrade. It also gives the backup volume its first
+# consumer: with WaitForFirstConsumer storage (EBS and most clouds) the PVC would stay
+# Pending until the first nightly run, and helm --wait (and Terraform) would time out.
+# Helm deletes the previous revision's Job on upgrade.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mongo-backup-r{{ .Release.Revision }}
+  namespace: {{ include "apigene.namespace" . }}
+  labels:
+    {{- include "apigene.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mongo-backup
+spec:
+  # MongoDB may still be starting (and creating its user) on a fresh install.
+  backoffLimit: 6
+  template:
+    {{- include "apigene.mongoBackupPod" . | nindent 4 }}
+{{- end }}

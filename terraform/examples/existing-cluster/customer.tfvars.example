@@ -1,17 +1,22 @@
 # Customer example for an existing Kubernetes cluster (on-prem/BYO cluster).
 
-tenant_name  = "acme"
-fqdn         = "apigene.example.com"
-image_tag    = "latest"
+tenant_name = "acme"
+fqdn        = "apigene.example.com"
+# Empty = the release pinned in the chart (appVersion). Avoid "latest".
+# image_tag = "5.26.4"
 
 # Set > 0 only if you use port-forward/local access.
 public_url_port = 0
 
 # Production defaults:
-enable_tls         = true
-use_staging_issuer = false
-aws_nlb            = false
+enable_tls            = true
+use_staging_issuer    = false
 install_storage_class = false
 
-# Enable if this cluster does not already have ingress-nginx/cert-manager:
-# install_addons = true
+# install_addons = true installs Envoy Gateway (Gateway API) and cert-manager. Without
+# them, point gateway_class_name at the cluster's own Gateway API implementation:
+# install_addons     = false
+# gateway_class_name = "istio"
+#
+# No load balancer implementation (bare metal without MetalLB)? Use NodePort:
+# gateway_service_type = "NodePort"

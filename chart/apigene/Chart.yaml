@@ -2,8 +2,11 @@ apiVersion: v2
 name: apigene
 description: Customer-facing Helm chart for the Apigene self-hosted platform
 type: application
-version: 0.1.0
-appVersion: "latest"
+version: 0.2.0
+# Default image tag for every Apigene service. Keep in sync with
+# apigene-docker-compose APIGENE_IMAGE_TAG.
+appVersion: "5.26.4"
+kubeVersion: ">=1.25.0-0"
 home: https://apigene.ai
 sources:
   - https://github.com/apigene/apigene-helm-chart

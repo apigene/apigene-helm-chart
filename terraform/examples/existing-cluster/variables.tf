@@ -17,7 +17,7 @@ variable "tenant_name" {
 }
 
 variable "fqdn" {
-  description = "Hostname for ingress (used in publicUrl)."
+  description = "Hostname users open (Gateway listener and publicUrl)."
   type        = string
   default     = "apigene.localtest"
 }
@@ -25,7 +25,7 @@ variable "fqdn" {
 variable "image_tag" {
   description = "Apigene image tag."
   type        = string
-  default     = "latest"
+  default     = ""
 }
 
 variable "auth_secret_key" {
@@ -36,7 +36,7 @@ variable "auth_secret_key" {
 }
 
 variable "install_addons" {
-  description = "Install nginx-ingress and cert-manager via Terraform."
+  description = "Install Envoy Gateway (Gateway API) and cert-manager via Terraform."
   type        = bool
   default     = true
 }
@@ -54,7 +54,7 @@ variable "use_staging_issuer" {
 }
 
 variable "enable_tls" {
-  description = "Enable TLS on ingress (disable for pure HTTP local testing)."
+  description = "Serve HTTPS on the Gateway with a Let's Encrypt certificate (disable for pure HTTP local testing)."
   type        = bool
   default     = false
 }
@@ -65,10 +65,16 @@ variable "cluster_issuer_name" {
   default     = "letsencrypt-prod"
 }
 
-variable "aws_nlb" {
-  description = "Use AWS NLB annotations for ingress-nginx (set false for k3d/local)."
-  type        = bool
-  default     = false
+variable "gateway_class_name" {
+  description = "GatewayClass of the cluster's Gateway API implementation when install_addons=false."
+  type        = string
+  default     = "eg"
+}
+
+variable "gateway_service_type" {
+  description = "Service type for the Envoy Gateway proxies when install_addons=true: LoadBalancer, or NodePort without a load balancer implementation."
+  type        = string
+  default     = "LoadBalancer"
 }
 
 variable "install_storage_class" {

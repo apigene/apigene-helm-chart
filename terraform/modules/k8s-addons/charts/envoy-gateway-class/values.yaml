@@ -1,0 +1,3 @@
+name: eg
+serviceType: LoadBalancer
+serviceAnnotations: {}

@@ -6,6 +6,8 @@
 #     --set publicUrl=https://<host> \
 #     --set auth.secretKey="$APIGENE_AUTH_SECRET" \
 #     --set mongo.auth.password="$APIGENE_MONGO_PASSWORD"
+#
+# On OpenShift releases with Gateway API support you can use gateway.* instead of the Route.
 
 deploymentType: OnPrem
 
@@ -20,7 +22,49 @@ networkPolicy:
   ingressNamespaceLabels:
     network.openshift.io/policy-group: ingress
 
+# The restricted-v2 SCC assigns each pod a UID and fsGroup from the project's range and
+# rejects any other value, so drop the fixed IDs the chart sets for plain Kubernetes.
+initImage:
+  securityContext:
+    runAsUser: null
+    runAsGroup: null
+
 mongo:
   storage: 10Gi
   auth:
     enabled: true
+  podSecurityContext:
+    runAsUser: null
+    runAsGroup: null
+    fsGroup: null
+    fsGroupChangePolicy: null
+
+redis:
+  podSecurityContext:
+    runAsUser: null
+    runAsGroup: null
+
+backend:
+  podSecurityContext:
+    runAsUser: null
+    runAsGroup: null
+
+backendWorker:
+  podSecurityContext:
+    runAsUser: null
+    runAsGroup: null
+
+copilot:
+  podSecurityContext:
+    runAsUser: null
+    runAsGroup: null
+
+mcpGw:
+  podSecurityContext:
+    runAsUser: null
+    runAsGroup: null
+
+nginx:
+  podSecurityContext:
+    runAsUser: null
+    runAsGroup: null

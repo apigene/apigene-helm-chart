@@ -13,9 +13,14 @@ output "fqdn" {
   value       = local.fqdn
 }
 
-output "nginx_lb_hostname" {
-  description = "nginx-ingress LoadBalancer hostname."
-  value       = module.k8s_addons.ingress_hostname
+output "alb_dns_name" {
+  description = "DNS name of the Application Load Balancer."
+  value       = data.aws_lb.apigene.dns_name
+}
+
+output "certificate_arn" {
+  description = "ACM certificate used by the ALB."
+  value       = module.certificate.certificate_arn
 }
 
 output "auth_secret_key" {

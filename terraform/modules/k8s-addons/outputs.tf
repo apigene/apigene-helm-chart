@@ -1,17 +1,15 @@
 output "cluster_issuer_name" {
-  value = local.cluster_issuer_name
+  description = "Let's Encrypt ClusterIssuer name (empty without cert-manager)."
+  value       = var.install_cert_manager ? local.cluster_issuer_name : ""
 }
 
-output "ingress_hostname" {
-  description = "Hostname of the ingress LoadBalancer (AWS NLB DNS name when aws_nlb=true)."
-  value       = try(data.kubernetes_service.ingress_nginx.status[0].load_balancer[0].ingress[0].hostname, "")
+output "gateway_class_name" {
+  description = "Envoy Gateway GatewayClass for the Apigene Gateway (empty without Envoy Gateway)."
+  value       = var.install_envoy_gateway ? var.gateway_class_name : ""
+  depends_on  = [helm_release.envoy_gateway_class]
 }
 
-output "ingress_ip" {
-  description = "IP of the ingress LoadBalancer when available."
-  value       = try(data.kubernetes_service.ingress_nginx.status[0].load_balancer[0].ingress[0].ip, "")
-}
-
-output "ingress_namespace" {
-  value = var.ingress_namespace
+output "gateway_namespace" {
+  description = "Namespace of the Envoy proxies (allow it in the Apigene NetworkPolicy)."
+  value       = var.envoy_gateway_namespace
 }

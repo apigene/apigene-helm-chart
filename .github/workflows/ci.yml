@@ -25,7 +25,12 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v5
         with:
-          version: v3.14.4
+          version: v3.19.0
+
+      - name: Install kubeconform
+        run: |
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin kubeconform
 
       - name: Run chart tests
         run: ./scripts/ci.sh chart
@@ -51,18 +56,23 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v5
         with:
-          version: v3.14.4
+          version: v3.19.0
 
-      - name: Deploy chart to k3d
+      - name: Deploy chart to k3d (with Envoy Gateway)
         run: |
           chmod +x scripts/*.sh tests/*.sh
-          SKIP_TESTS=1 TEARDOWN=0 ./scripts/test-local-cluster.sh
+          GATEWAY=1 SKIP_TESTS=1 TEARDOWN=0 ./scripts/test-local-cluster.sh
 
       - name: Smoke and integration tests
         run: ./scripts/ci-e2e-tests.sh
         env:
           APIGENE_NAMESPACE: apigene
           APIGENE_PORT: "18080"
+
+      - name: Smoke tests through the Gateway
+        run: ./scripts/gateway-smoke.sh
+        env:
+          APIGENE_NAMESPACE: apigene
 
       - name: Tear down k3d cluster
         if: always()
